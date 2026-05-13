@@ -406,6 +406,16 @@
             <label for="entryNote">Note <span class="muted">(optional)</span></label>
             <input type="text" id="entryNote" maxlength="80" placeholder="e.g. November salary" />
           </div>
+          <div class="field field--check">
+            <label class="check">
+              <input type="checkbox" id="entryRecurring" />
+              <span class="check__box" aria-hidden="true"></span>
+              <span class="check__label">
+                <span class="check__title">Recurring — repeat every month</span>
+                <span class="check__hint" id="entryRecurringHint">Repeats automatically in every month from the start month onward.</span>
+              </span>
+            </label>
+          </div>
           <input type="hidden" id="entryId" />
         </div>
 

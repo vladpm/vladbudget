@@ -7,7 +7,8 @@ A quiet, Apple-inspired monthly budgeting app. Log income, set outgoings, invest
 ## Features
 
 - **Add, edit and delete monthly entries** against custom categories.
-- **Categories** grouped by type: **Income**, **Set outgoings**, **Investments**, **Other**. Rename, retype or delete any.
+- **Recurring entries** — tick “Repeat every month” when adding salary or fixed spending and it shows in every future month automatically. Stop a recurring entry from any month onward without losing past history.
+- **Categories** grouped by type: **Income**, **Set outgoings**, **Investments**, **Savings**, **Other**. Rename, retype or delete any.
 - **Card balances** — track this month's balance on each credit card (Amex, Barclaycard, or any you add). Card names are editable; per-month balances save inline as you type.
 - **“Leftover” KPI** that subtracts outgoings, investments **and** card balances from your income, so you see what's actually yours after the month settles.
 - **Month picker** with prev/next navigation.
@@ -46,12 +47,20 @@ Data is stored under the `vladbudget.v1` key in `localStorage`:
 
 ```jsonc
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "categories": [
     { "id": "…", "name": "Salary", "type": "income" }
   ],
   "entries": [
-    { "id": "…", "month": "2026-05", "categoryId": "…", "amount": 2500, "note": "May salary" }
+    {
+      "id": "…",
+      "month": "2026-05",
+      "categoryId": "…",
+      "amount": 2500,
+      "note": "Monthly salary",
+      "recurring": true,
+      "endMonth": null
+    }
   ],
   "cards": [
     { "id": "…", "name": "Amex" },
@@ -63,4 +72,4 @@ Data is stored under the `vladbudget.v1` key in `localStorage`:
 }
 ```
 
-Use **Export JSON** in the Data section to back this up. Older v1/v2 exports (with per-entry `date` strings) are migrated to month-only on import.
+Use **Export JSON** in the Data section to back this up. Older v1–v3 exports are migrated automatically on import (per-entry `date` strings collapse to `month`, and `recurring`/`endMonth` defaults are filled in).

@@ -9,10 +9,10 @@
   // Storage
   // -----------------------------------------------------------
   const STORAGE_KEY = "vladbudget.v1";
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
-  /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'other'}} Category */
-  /** @typedef {{id:string,month:string,categoryId:string,amount:number,note:string}} Entry */
+  /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'savings'|'other'}} Category */
+  /** @typedef {{id:string,month:string,categoryId:string,amount:number,note:string,recurring?:boolean,endMonth?:string|null}} Entry */
   /** @typedef {{id:string,name:string}} Card */
   /** @typedef {{cardId:string,month:string,amount:number}} CardBalance */
   /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[]}} Store */
@@ -92,6 +92,17 @@
       }
       delete e.date;
       changed = true;
+    }
+    // v3 → v4: add `recurring` + `endMonth` defaults
+    for (const e of s.entries) {
+      if (typeof e.recurring !== "boolean") {
+        e.recurring = false;
+        changed = true;
+      }
+      if (!Object.prototype.hasOwnProperty.call(e, "endMonth")) {
+        e.endMonth = null;
+        changed = true;
+      }
     }
     if (s.schemaVersion !== SCHEMA_VERSION) {
       s.schemaVersion = SCHEMA_VERSION;
@@ -197,6 +208,8 @@
     entryCategory: $("#entryCategory"),
     entryAmount: $("#entryAmount"),
     entryNote: $("#entryNote"),
+    entryRecurring: $("#entryRecurring"),
+    entryRecurringHint: $("#entryRecurringHint"),
     entryId: $("#entryId"),
 
     categoryDialog: $("#categoryDialog"),
@@ -293,9 +306,17 @@
     return store.cards.find((c) => c.id === id) || null;
   }
 
+  function entryAppliesTo(e, monthKey) {
+    if (e.month > monthKey) return false;
+    if (e.month === monthKey) return true;
+    if (!e.recurring) return false;
+    if (e.endMonth && e.endMonth < monthKey) return false;
+    return true;
+  }
+
   function entriesForMonth(monthKey) {
     return store.entries
-      .filter((e) => e.month === monthKey)
+      .filter((e) => entryAppliesTo(e, monthKey))
       .sort((a, b) => {
         // Sort by category name for a stable, scannable order within a month.
         const ca = categoryById(a.categoryId);
@@ -309,7 +330,7 @@
   function totalsForMonth(monthKey) {
     const totals = { income: 0, outgoing: 0, investment: 0, savings: 0, other: 0 };
     for (const e of store.entries) {
-      if (e.month !== monthKey) continue;
+      if (!entryAppliesTo(e, monthKey)) continue;
       const cat = categoryById(e.categoryId);
       if (!cat) continue;
       totals[cat.type] += e.amount;
@@ -434,7 +455,7 @@
     // Aggregate per category for this month
     const byCat = new Map();
     for (const e of store.entries) {
-      if (e.month !== selectedMonth) continue;
+      if (!entryAppliesTo(e, selectedMonth)) continue;
       const cur = byCat.get(e.categoryId) || { total: 0, count: 0 };
       cur.total += e.amount;
       cur.count += 1;
@@ -510,12 +531,31 @@
         const type = cat ? cat.type : "other";
         const color = TYPE_COLOR[type];
         const sign = type === "income" ? "+" : "−";
+        const isRecurring = !!e.recurring;
+        const startedThisMonth = e.month === selectedMonth;
+        const recurringBadge = isRecurring
+          ? `<span class="recur-badge" title="Repeats every month from ${escapeHtml(formatMonthLong(e.month))}">
+               <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/>
+               </svg>
+               <span>Recurring</span>
+             </span>`
+          : "";
+        const stopBtn = isRecurring && !startedThisMonth
+          ? `<button type="button" class="icon-btn" data-act="stop" aria-label="Stop recurring from this month" title="Stop recurring from this month onward">
+               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                 <rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+               </svg>
+             </button>`
+          : "";
         return `
           <tr data-id="${e.id}">
             <td>
               <span class="cat-pill" style="color:${color}">
                 ${escapeHtml(cat ? cat.name : "Uncategorised")}
               </span>
+              ${recurringBadge}
               <div class="bcard__count">${escapeHtml(cat ? TYPE_LABEL[type] : "")}</div>
             </td>
             <td>${escapeHtml(e.note || "")}</td>
@@ -527,6 +567,7 @@
                     d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"/>
                 </svg>
               </button>
+              ${stopBtn}
               <button type="button" class="icon-btn icon-btn--danger" data-act="delete" aria-label="Delete entry">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
@@ -833,6 +874,8 @@
       saveEntryFromForm();
     });
 
+    els.entryMonth.addEventListener("change", () => updateRecurringHint());
+
     els.filterType.addEventListener("change", () => renderTable());
 
     els.entryTableBody.addEventListener("click", (e) => {
@@ -843,6 +886,7 @@
       if (!id) return;
       if (btn.dataset.act === "edit") openEntryDialog(id);
       if (btn.dataset.act === "delete") deleteEntry(id);
+      if (btn.dataset.act === "stop") stopRecurring(id);
     });
 
     els.categoryForm.addEventListener("submit", (e) => {
@@ -947,6 +991,7 @@
       els.entryCategory.value = e.categoryId;
       els.entryAmount.value = String(e.amount);
       els.entryNote.value = e.note || "";
+      els.entryRecurring.checked = !!e.recurring;
     } else {
       els.entryDialogTitle.textContent = "Add entry";
       els.entryId.value = "";
@@ -954,7 +999,9 @@
       els.entryCategory.selectedIndex = 0;
       els.entryAmount.value = "";
       els.entryNote.value = "";
+      els.entryRecurring.checked = false;
     }
+    updateRecurringHint();
 
     if (typeof els.entryDialog.showModal === "function") {
       els.entryDialog.showModal();
@@ -962,6 +1009,17 @@
       els.entryDialog.setAttribute("open", "");
     }
     setTimeout(() => els.entryAmount.focus(), 50);
+  }
+
+  function updateRecurringHint() {
+    if (!els.entryRecurringHint) return;
+    const month = els.entryMonth.value;
+    if (!month) {
+      els.entryRecurringHint.textContent = "Repeats automatically in every month from the start month onward.";
+      return;
+    }
+    els.entryRecurringHint.textContent =
+      `Repeats automatically in every month from ${formatMonthLong(month)} onward.`;
   }
 
   function closeEntryDialog() {
@@ -986,6 +1044,7 @@
     const categoryId = els.entryCategory.value;
     const amount = parseFloat(els.entryAmount.value);
     const note = (els.entryNote.value || "").trim();
+    const recurring = !!els.entryRecurring.checked;
 
     if (!month || !/^\d{4}-\d{2}$/.test(month) || !categoryId || !Number.isFinite(amount) || amount < 0) {
       toast("Please fill in month, category and a valid amount.");
@@ -998,8 +1057,11 @@
       existing.categoryId = categoryId;
       existing.amount = amount;
       existing.note = note;
+      // If recurring is being toggled off, clear endMonth too.
+      if (existing.recurring && !recurring) existing.endMonth = null;
+      existing.recurring = recurring;
     } else {
-      store.entries.push({ id, month, categoryId, amount, note });
+      store.entries.push({ id, month, categoryId, amount, note, recurring, endMonth: null });
     }
     saveStore(store);
 
@@ -1014,11 +1076,33 @@
   function deleteEntry(id) {
     const e = store.entries.find((x) => x.id === id);
     if (!e) return;
-    if (!confirm("Delete this entry?")) return;
+    const msg = e.recurring
+      ? "Delete this recurring entry? It will be removed from every month."
+      : "Delete this entry?";
+    if (!confirm(msg)) return;
     store.entries = store.entries.filter((x) => x.id !== id);
     saveStore(store);
     render();
     toast("Entry deleted");
+  }
+
+  function stopRecurring(id) {
+    const e = store.entries.find((x) => x.id === id);
+    if (!e || !e.recurring) return;
+    if (e.month === selectedMonth) {
+      // Stopping in the start month is the same as deleting it entirely.
+      if (!confirm("This recurring entry starts this month. Stopping it removes it entirely. Continue?")) return;
+      store.entries = store.entries.filter((x) => x.id !== id);
+      saveStore(store);
+      render();
+      toast("Entry deleted");
+      return;
+    }
+    if (!confirm(`Stop this recurring entry from ${formatMonthLong(selectedMonth)} onward? Past months keep it.`)) return;
+    e.endMonth = shiftMonth(selectedMonth, -1);
+    saveStore(store);
+    render();
+    toast("Recurring stopped");
   }
 
   // -----------------------------------------------------------
@@ -1219,14 +1303,17 @@
         }
         // Migrate imported entries from `date` to `month` if needed.
         const importedEntries = parsed.entries.map((e) => {
-          if (e && e.month) return e;
           const cloned = Object.assign({}, e);
-          if (typeof cloned.date === "string" && cloned.date.length >= 7) {
-            cloned.month = cloned.date.slice(0, 7);
-          } else {
-            cloned.month = monthKeyFromDate(new Date());
+          if (!cloned.month) {
+            if (typeof cloned.date === "string" && cloned.date.length >= 7) {
+              cloned.month = cloned.date.slice(0, 7);
+            } else {
+              cloned.month = monthKeyFromDate(new Date());
+            }
           }
           delete cloned.date;
+          if (typeof cloned.recurring !== "boolean") cloned.recurring = false;
+          if (!Object.prototype.hasOwnProperty.call(cloned, "endMonth")) cloned.endMonth = null;
           return cloned;
         });
         store = {

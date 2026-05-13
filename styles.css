@@ -901,6 +901,24 @@ a:hover {
   opacity: 0.7;
 }
 
+.recur-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.12px;
+  color: var(--primary);
+  background: rgba(0, 102, 204, 0.08);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  vertical-align: middle;
+}
+.recur-badge svg {
+  flex-shrink: 0;
+}
+
 .icon-btn {
   background: transparent;
   border: 0;
@@ -1092,6 +1110,75 @@ a:hover {
 .field select:focus-visible {
   outline: 2px solid var(--primary-focus);
   outline-offset: 2px;
+}
+
+.field--check label {
+  font-weight: 400;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.check:hover {
+  border-color: rgba(0, 102, 204, 0.3);
+}
+.check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.check__box {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid var(--hairline);
+  background: var(--canvas);
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.check input:checked + .check__box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.check input:checked + .check__box::after {
+  content: "";
+  width: 12px;
+  height: 7px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.check input:focus-visible + .check__box {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+.check__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.check__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink);
+}
+.check__hint {
+  font-size: 13px;
+  color: var(--ink-muted-48);
+  letter-spacing: -0.12px;
 }
 
 /* ============================================================
