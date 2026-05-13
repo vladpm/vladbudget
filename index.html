@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Budget — Monthly</title>
+    <meta
+      name="description"
+      content="A quiet, monthly budgeting workspace. Log income, outgoings and investments across dynamic categories, and watch the months unfold."
+    />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="./styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d1d1f'/%3E%3Ctext x='16' y='22' font-family='-apple-system,SF Pro Text,sans-serif' font-size='18' font-weight='600' text-anchor='middle' fill='%230066cc'%3E£%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <!-- Global nav -->
+    <header class="global-nav" role="banner">
+      <div class="global-nav__inner">
+        <a class="global-nav__brand" href="#" aria-label="Budget home">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 2a1 1 0 0 1 1 1v1.07a8 8 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 4a6 6 0 1 0 6 6 6 6 0 0 0-6-6Zm.75 2v1.1a2.5 2.5 0 0 1 2.05 1.65.75.75 0 1 1-1.4.5A1 1 0 0 0 12.5 10.7v2.07c1.43.32 2.5 1.18 2.5 2.48 0 1.4-1.23 2.3-2.75 2.45V19a.75.75 0 0 1-1.5 0v-1.3c-1.27-.15-2.27-.84-2.55-1.85a.75.75 0 1 1 1.45-.4c.13.5.74.95 1.6 1.05V14.4c-1.32-.31-2.4-1.06-2.4-2.36 0-1.34 1.16-2.27 2.4-2.4V8a.75.75 0 0 1 1.5 0Zm-1.5 3.16c-.55.1-1.4.46-1.4 1.18 0 .55.5.95 1.4 1.16ZM12.5 14.6v2.05c.83-.13 1.5-.55 1.5-1.05 0-.6-.74-.86-1.5-1Z"
+            />
+          </svg>
+          <span>Budget</span>
+        </a>
+        <nav class="global-nav__links" aria-label="Primary">
+          <a href="#dashboard">Dashboard</a>
+          <a href="#log">Log</a>
+          <a href="#categories">Categories</a>
+          <a href="#data">Data</a>
+        </nav>
+        <div class="global-nav__util">
+          <span id="navMonthLabel" class="global-nav__month" aria-live="polite"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sub-nav frosted -->
+    <div class="sub-nav" role="region" aria-label="Month selector">
+      <div class="sub-nav__inner">
+        <span class="sub-nav__title">Monthly Budget</span>
+        <div class="sub-nav__controls">
+          <button
+            class="btn-icon"
+            id="prevMonthBtn"
+            aria-label="Previous month"
+            type="button"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M15 6 9 12l6 6"
+              />
+            </svg>
+          </button>
+          <label class="visually-hidden" for="monthInput">Month</label>
+          <input
+            type="month"
+            id="monthInput"
+            class="month-input"
+            aria-label="Selected month"
+          />
+          <button
+            class="btn-icon"
+            id="nextMonthBtn"
+            aria-label="Next month"
+            type="button"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m9 6 6 6-6 6"
+              />
+            </svg>
+          </button>
+          <button
+            class="btn-primary sub-nav__cta"
+            id="addEntryBtn"
+            type="button"
+          >
+            Add entry
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <main id="main">
+      <!-- Hero / month summary tile -->
+      <section class="tile tile--light" id="dashboard" aria-labelledby="heroTitle">
+        <div class="tile__inner">
+          <p class="eyebrow" id="heroMonthLabel">Loading…</p>
+          <h1 class="display-hero" id="heroTitle">Your month, in focus.</h1>
+          <p class="lead">
+            Quietly log what comes in and what goes out. Watch the months
+            settle into a rhythm.
+          </p>
+
+          <div class="kpi-grid" role="list">
+            <article class="kpi" role="listitem">
+              <p class="kpi__label">Income</p>
+              <p class="kpi__value" id="kpiIncome">£0</p>
+              <p class="kpi__hint" id="kpiIncomeHint">No entries yet</p>
+            </article>
+            <article class="kpi" role="listitem">
+              <p class="kpi__label">Outgoings</p>
+              <p class="kpi__value" id="kpiOutgoings">£0</p>
+              <p class="kpi__hint" id="kpiOutgoingsHint">No entries yet</p>
+            </article>
+            <article class="kpi" role="listitem">
+              <p class="kpi__label">Investments</p>
+              <p class="kpi__value" id="kpiInvestments">£0</p>
+              <p class="kpi__hint" id="kpiInvestmentsHint">No entries yet</p>
+            </article>
+            <article class="kpi kpi--accent" role="listitem">
+              <p class="kpi__label">Net</p>
+              <p class="kpi__value" id="kpiNet">£0</p>
+              <p class="kpi__hint" id="kpiNetHint">Income − everything else</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Trend tile (dark) -->
+      <section class="tile tile--dark" aria-labelledby="trendTitle">
+        <div class="tile__inner">
+          <p class="eyebrow eyebrow--on-dark">Month on month</p>
+          <h2 class="display-lg" id="trendTitle">The shape of your year.</h2>
+          <p class="lead lead--on-dark">
+            Twelve months at a glance. Income rises in blue, outgoings settle
+            beneath, and the net line tells the truer story.
+          </p>
+
+          <div class="chart-wrap">
+            <canvas id="trendChart" height="320" aria-label="Month-on-month trend chart" role="img"></canvas>
+          </div>
+
+          <div class="chart-meta">
+            <div class="chart-meta__item">
+              <span class="dot dot--income"></span>
+              <span>Income</span>
+            </div>
+            <div class="chart-meta__item">
+              <span class="dot dot--outgoings"></span>
+              <span>Outgoings</span>
+            </div>
+            <div class="chart-meta__item">
+              <span class="dot dot--investments"></span>
+              <span>Investments</span>
+            </div>
+            <div class="chart-meta__item">
+              <span class="dot dot--net"></span>
+              <span>Net</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Category breakdown tile (parchment) -->
+      <section class="tile tile--parchment" aria-labelledby="breakdownTitle">
+        <div class="tile__inner">
+          <p class="eyebrow">Category breakdown</p>
+          <h2 class="display-lg" id="breakdownTitle">Where the money lives.</h2>
+          <p class="lead">
+            A quiet ledger of every category, with totals for the month you've
+            chosen.
+          </p>
+
+          <div class="breakdown-grid" id="breakdownGrid" aria-live="polite">
+            <!-- populated by app.js -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Entries log -->
+      <section class="tile tile--light" id="log" aria-labelledby="logTitle">
+        <div class="tile__inner">
+          <p class="eyebrow">Entries</p>
+          <h2 class="display-lg" id="logTitle">This month, line by line.</h2>
+
+          <div class="log-toolbar">
+            <div class="filter">
+              <label for="filterType" class="visually-hidden">Filter by type</label>
+              <select id="filterType" class="select">
+                <option value="all">All types</option>
+                <option value="income">Income</option>
+                <option value="outgoing">Set outgoings</option>
+                <option value="investment">Investments</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <button class="btn-primary" id="addEntryBtn2" type="button">
+              Add entry
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="entry-table" id="entryTable">
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Category</th>
+                  <th scope="col">Note</th>
+                  <th scope="col" class="num">Amount</th>
+                  <th scope="col" class="num"><span class="visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="entryTableBody">
+                <!-- populated by app.js -->
+              </tbody>
+            </table>
+            <p class="empty" id="entryEmpty" hidden>
+              No entries for this month yet. Add one to begin.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Categories management -->
+      <section class="tile tile--parchment" id="categories" aria-labelledby="catTitle">
+        <div class="tile__inner">
+          <p class="eyebrow">Categories</p>
+          <h2 class="display-lg" id="catTitle">Make it your own.</h2>
+          <p class="lead">
+            Create as many categories as you like — income streams, fixed
+            outgoings, investments, anything else worth tracking.
+          </p>
+
+          <form id="categoryForm" class="cat-form" autocomplete="off">
+            <label class="visually-hidden" for="catName">Category name</label>
+            <input
+              type="text"
+              id="catName"
+              class="text-input"
+              placeholder="e.g. Salary, Rent, ISA"
+              required
+              maxlength="40"
+            />
+            <label class="visually-hidden" for="catType">Category type</label>
+            <select id="catType" class="select">
+              <option value="income">Income</option>
+              <option value="outgoing">Set outgoing</option>
+              <option value="investment">Investment</option>
+              <option value="other">Other</option>
+            </select>
+            <button type="submit" class="btn-primary">Add category</button>
+          </form>
+
+          <ul class="cat-list" id="categoryList">
+            <!-- populated by app.js -->
+          </ul>
+        </div>
+      </section>
+
+      <!-- Data tile (dark) -->
+      <section class="tile tile--dark-3" id="data" aria-labelledby="dataTitle">
+        <div class="tile__inner">
+          <p class="eyebrow eyebrow--on-dark">Your data</p>
+          <h2 class="display-lg" id="dataTitle">Always yours.</h2>
+          <p class="lead lead--on-dark">
+            Everything stays in this browser. Export a backup, restore from
+            one, or start over — your call.
+          </p>
+          <div class="data-actions">
+            <button class="btn-primary" id="exportBtn" type="button">
+              Export JSON
+            </button>
+            <button class="btn-ghost" id="importBtn" type="button">
+              Import JSON
+            </button>
+            <input
+              type="file"
+              id="importFile"
+              accept="application/json"
+              class="visually-hidden"
+              aria-hidden="true"
+            />
+            <button class="btn-ghost btn-ghost--danger" id="resetBtn" type="button">
+              Reset everything
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" role="contentinfo">
+      <div class="footer__inner">
+        <p>
+          Built quietly. Data lives in your browser via <code>localStorage</code>.
+        </p>
+        <p class="footer__legal">
+          © <span id="footerYear"></span> Budget. A personal monthly ledger.
+        </p>
+      </div>
+    </footer>
+
+    <!-- Add / edit entry modal -->
+    <dialog id="entryDialog" class="dialog" aria-labelledby="entryDialogTitle">
+      <form method="dialog" id="entryForm" class="dialog__form" autocomplete="off">
+        <header class="dialog__head">
+          <h3 class="display-md" id="entryDialogTitle">Add entry</h3>
+          <button
+            type="button"
+            class="btn-icon dialog__close"
+            id="entryDialogClose"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                d="m6 6 12 12M18 6 6 18"
+              />
+            </svg>
+          </button>
+        </header>
+
+        <div class="dialog__body">
+          <div class="field">
+            <label for="entryDate">Date</label>
+            <input type="date" id="entryDate" required />
+          </div>
+          <div class="field">
+            <label for="entryCategory">Category</label>
+            <select id="entryCategory" required></select>
+          </div>
+          <div class="field">
+            <label for="entryAmount">Amount (£)</label>
+            <input
+              type="number"
+              id="entryAmount"
+              step="0.01"
+              min="0"
+              required
+              inputmode="decimal"
+              placeholder="0.00"
+            />
+          </div>
+          <div class="field">
+            <label for="entryNote">Note <span class="muted">(optional)</span></label>
+            <input type="text" id="entryNote" maxlength="80" placeholder="e.g. November salary" />
+          </div>
+          <input type="hidden" id="entryId" />
+        </div>
+
+        <footer class="dialog__foot">
+          <button type="button" class="btn-ghost" id="entryDialogCancel">Cancel</button>
+          <button type="submit" class="btn-primary" id="entrySaveBtn">Save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
