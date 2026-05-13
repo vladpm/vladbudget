@@ -31,6 +31,7 @@
         </a>
         <nav class="global-nav__links" aria-label="Primary">
           <a href="#dashboard">Dashboard</a>
+          <a href="#cards">Cards</a>
           <a href="#log">Log</a>
           <a href="#categories">Categories</a>
           <a href="#data">Data</a>
@@ -125,12 +126,48 @@
               <p class="kpi__value" id="kpiInvestments">£0</p>
               <p class="kpi__hint" id="kpiInvestmentsHint">No entries yet</p>
             </article>
+            <article class="kpi" role="listitem">
+              <p class="kpi__label">Card balances</p>
+              <p class="kpi__value" id="kpiCards">£0</p>
+              <p class="kpi__hint" id="kpiCardsHint">No cards added</p>
+            </article>
             <article class="kpi kpi--accent" role="listitem">
-              <p class="kpi__label">Net</p>
+              <p class="kpi__label">Leftover</p>
               <p class="kpi__value" id="kpiNet">£0</p>
-              <p class="kpi__hint" id="kpiNetHint">Income − everything else</p>
+              <p class="kpi__hint" id="kpiNetHint">After outgoings, investments &amp; card balances</p>
             </article>
           </div>
+        </div>
+      </section>
+
+      <!-- Card balances tile -->
+      <section class="tile tile--parchment" id="cards" aria-labelledby="cardsTitle">
+        <div class="tile__inner">
+          <p class="eyebrow">Card balances</p>
+          <h2 class="display-lg" id="cardsTitle">What you owe this month.</h2>
+          <p class="lead">
+            Drop in the current balance on each card for
+            <span id="cardsMonthLabel">this month</span>. Once you've covered
+            the mortgage, bills and investments, the leftover above is what's
+            actually yours.
+          </p>
+
+          <div class="cards-grid" id="cardsGrid" aria-live="polite">
+            <!-- populated by app.js -->
+          </div>
+
+          <form id="cardForm" class="cat-form" autocomplete="off">
+            <label class="visually-hidden" for="cardName">Card name</label>
+            <input
+              type="text"
+              id="cardName"
+              class="text-input"
+              placeholder="e.g. Amex Gold, Barclaycard, Halifax"
+              required
+              maxlength="40"
+            />
+            <button type="submit" class="btn-primary">Add card</button>
+          </form>
         </div>
       </section>
 
@@ -162,8 +199,12 @@
               <span>Investments</span>
             </div>
             <div class="chart-meta__item">
+              <span class="dot dot--cards"></span>
+              <span>Card balances</span>
+            </div>
+            <div class="chart-meta__item">
               <span class="dot dot--net"></span>
-              <span>Net</span>
+              <span>Leftover</span>
             </div>
           </div>
         </div>
@@ -367,6 +408,75 @@
 
     <!-- Toast -->
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- Edit category modal -->
+    <dialog id="categoryDialog" class="dialog" aria-labelledby="categoryDialogTitle">
+      <form method="dialog" id="categoryEditForm" class="dialog__form" autocomplete="off">
+        <header class="dialog__head">
+          <h3 class="display-md" id="categoryDialogTitle">Edit category</h3>
+          <button
+            type="button"
+            class="btn-icon dialog__close"
+            id="categoryDialogClose"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </header>
+        <div class="dialog__body">
+          <div class="field">
+            <label for="editCatName">Name</label>
+            <input type="text" id="editCatName" required maxlength="40" />
+          </div>
+          <div class="field">
+            <label for="editCatType">Type</label>
+            <select id="editCatType" required>
+              <option value="income">Income</option>
+              <option value="outgoing">Set outgoing</option>
+              <option value="investment">Investment</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <input type="hidden" id="editCatId" />
+        </div>
+        <footer class="dialog__foot">
+          <button type="button" class="btn-ghost" id="categoryDialogCancel">Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- Edit card modal -->
+    <dialog id="cardDialog" class="dialog" aria-labelledby="cardDialogTitle">
+      <form method="dialog" id="cardEditForm" class="dialog__form" autocomplete="off">
+        <header class="dialog__head">
+          <h3 class="display-md" id="cardDialogTitle">Edit card</h3>
+          <button
+            type="button"
+            class="btn-icon dialog__close"
+            id="cardDialogClose"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </header>
+        <div class="dialog__body">
+          <div class="field">
+            <label for="editCardName">Card name</label>
+            <input type="text" id="editCardName" required maxlength="40" />
+          </div>
+          <input type="hidden" id="editCardId" />
+        </div>
+        <footer class="dialog__foot">
+          <button type="button" class="btn-ghost" id="cardDialogCancel">Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </footer>
+      </form>
+    </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="./app.js" defer></script>

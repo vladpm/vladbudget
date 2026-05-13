@@ -29,6 +29,7 @@
   --accent-outgoing: #ff453a;
   --accent-investment: #30d158;
   --accent-other: #ff9f0a;
+  --accent-cards: #bf5af2;
   --accent-net: #2997ff;
 
   /* Radii */
@@ -566,8 +567,130 @@ a:hover {
 .dot--investments {
   background: var(--accent-investment);
 }
+.dot--cards {
+  background: var(--accent-cards);
+}
 .dot--net {
   background: var(--accent-net);
+}
+
+/* ============================================================
+   Cards grid (card balances)
+   ============================================================ */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s-md);
+  margin-top: var(--s-xl);
+  margin-bottom: var(--s-lg);
+}
+
+.ccard {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: var(--s-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+  position: relative;
+}
+
+.ccard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-xs);
+}
+
+.ccard__name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ccard__chip {
+  width: 28px;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #d4af37 0%, #b08c1a 100%);
+  flex-shrink: 0;
+}
+
+.ccard__name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.374px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ccard__actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ccard__amount-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ccard__currency {
+  font-family: var(--ff-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink-muted-48);
+  letter-spacing: -0.01em;
+}
+
+.ccard__input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  font-family: var(--ff-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  padding: 4px 2px;
+  width: 100%;
+  min-width: 0;
+}
+.ccard__input:hover {
+  border-bottom-color: var(--hairline);
+}
+.ccard__input:focus {
+  outline: none;
+  border-bottom-color: var(--primary);
+}
+.ccard__input::-webkit-outer-spin-button,
+.ccard__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ccard__hint {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+}
+
+.ccard--empty {
+  background: transparent;
+  border: 1px dashed var(--hairline);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--ink-muted-48);
+  min-height: 140px;
 }
 
 /* ============================================================

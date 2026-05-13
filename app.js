@@ -9,11 +9,13 @@
   // Storage
   // -----------------------------------------------------------
   const STORAGE_KEY = "vladbudget.v1";
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
 
   /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'other'}} Category */
   /** @typedef {{id:string,date:string,categoryId:string,amount:number,note:string}} Entry */
-  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[]}} Store */
+  /** @typedef {{id:string,name:string}} Card */
+  /** @typedef {{cardId:string,month:string,amount:number}} CardBalance */
+  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[]}} Store */
 
   const DEFAULT_CATEGORIES = [
     { name: "Salary", type: "income" },
@@ -26,6 +28,11 @@
     { name: "ISA / Stocks", type: "investment" },
     { name: "Pension top-up", type: "investment" },
     { name: "Discretionary", type: "other" },
+  ];
+
+  const DEFAULT_CARDS = [
+    { name: "Amex" },
+    { name: "Barclaycard" },
   ];
 
   const TYPE_LABEL = {
@@ -42,6 +49,8 @@
     other: "#ff9f0a",
   };
 
+  const CARDS_COLOR = "#bf5af2";
+
   /** @returns {Store} */
   function loadStore() {
     try {
@@ -52,10 +61,29 @@
       if (!Array.isArray(parsed.categories) || !Array.isArray(parsed.entries)) {
         return seedStore();
       }
-      return parsed;
+      return migrate(parsed);
     } catch (_e) {
       return seedStore();
     }
+  }
+
+  /** Bring older stores forward to the current schema. */
+  function migrate(s) {
+    let changed = false;
+    if (!Array.isArray(s.cards)) {
+      s.cards = DEFAULT_CARDS.map((c) => ({ id: uid(), name: c.name }));
+      changed = true;
+    }
+    if (!Array.isArray(s.cardBalances)) {
+      s.cardBalances = [];
+      changed = true;
+    }
+    if (s.schemaVersion !== SCHEMA_VERSION) {
+      s.schemaVersion = SCHEMA_VERSION;
+      changed = true;
+    }
+    if (changed) saveStore(s);
+    return s;
   }
 
   /** @returns {Store} */
@@ -65,10 +93,13 @@
       name: c.name,
       type: c.type,
     }));
+    const cards = DEFAULT_CARDS.map((c) => ({ id: uid(), name: c.name }));
     const store = {
       schemaVersion: SCHEMA_VERSION,
       categories,
       entries: [],
+      cards,
+      cardBalances: [],
     };
     saveStore(store);
     return store;
@@ -109,10 +140,12 @@
     kpiIncome: $("#kpiIncome"),
     kpiOutgoings: $("#kpiOutgoings"),
     kpiInvestments: $("#kpiInvestments"),
+    kpiCards: $("#kpiCards"),
     kpiNet: $("#kpiNet"),
     kpiIncomeHint: $("#kpiIncomeHint"),
     kpiOutgoingsHint: $("#kpiOutgoingsHint"),
     kpiInvestmentsHint: $("#kpiInvestmentsHint"),
+    kpiCardsHint: $("#kpiCardsHint"),
     kpiNetHint: $("#kpiNetHint"),
 
     breakdownGrid: $("#breakdownGrid"),
@@ -127,6 +160,11 @@
     catName: $("#catName"),
     catType: $("#catType"),
     categoryList: $("#categoryList"),
+
+    cardsGrid: $("#cardsGrid"),
+    cardsMonthLabel: $("#cardsMonthLabel"),
+    cardForm: $("#cardForm"),
+    cardName: $("#cardName"),
 
     exportBtn: $("#exportBtn"),
     importBtn: $("#importBtn"),
@@ -143,6 +181,21 @@
     entryAmount: $("#entryAmount"),
     entryNote: $("#entryNote"),
     entryId: $("#entryId"),
+
+    categoryDialog: $("#categoryDialog"),
+    categoryDialogClose: $("#categoryDialogClose"),
+    categoryDialogCancel: $("#categoryDialogCancel"),
+    categoryEditForm: $("#categoryEditForm"),
+    editCatName: $("#editCatName"),
+    editCatType: $("#editCatType"),
+    editCatId: $("#editCatId"),
+
+    cardDialog: $("#cardDialog"),
+    cardDialogClose: $("#cardDialogClose"),
+    cardDialogCancel: $("#cardDialogCancel"),
+    cardEditForm: $("#cardEditForm"),
+    editCardName: $("#editCardName"),
+    editCardId: $("#editCardId"),
 
     toast: $("#toast"),
     footerYear: $("#footerYear"),
@@ -219,6 +272,10 @@
     return store.categories.find((c) => c.id === id) || null;
   }
 
+  function cardById(id) {
+    return store.cards.find((c) => c.id === id) || null;
+  }
+
   function entriesForMonth(monthKey) {
     return store.entries
       .filter((e) => monthKeyFromIsoDate(e.date) === monthKey)
@@ -234,6 +291,40 @@
       totals[cat.type] += e.amount;
     }
     return totals;
+  }
+
+  function cardBalance(cardId, monthKey) {
+    const b = store.cardBalances.find(
+      (x) => x.cardId === cardId && x.month === monthKey
+    );
+    return b ? b.amount : 0;
+  }
+
+  function setCardBalance(cardId, monthKey, amount) {
+    const i = store.cardBalances.findIndex(
+      (x) => x.cardId === cardId && x.month === monthKey
+    );
+    if (amount === 0 || amount == null || Number.isNaN(amount)) {
+      if (i >= 0) store.cardBalances.splice(i, 1);
+    } else if (i >= 0) {
+      store.cardBalances[i].amount = amount;
+    } else {
+      store.cardBalances.push({ cardId, month: monthKey, amount });
+    }
+  }
+
+  function cardsTotalForMonth(monthKey) {
+    let total = 0;
+    for (const b of store.cardBalances) {
+      if (b.month === monthKey) total += b.amount;
+    }
+    return total;
+  }
+
+  function leftoverForMonth(monthKey) {
+    const t = totalsForMonth(monthKey);
+    const cards = cardsTotalForMonth(monthKey);
+    return t.income - t.outgoing - t.investment - t.other - cards;
   }
 
   function trailingMonths(n) {
@@ -252,6 +343,7 @@
   function render() {
     renderMonthLabels();
     renderKPIs();
+    renderCards();
     renderBreakdown();
     renderTable();
     renderCategories();
@@ -263,28 +355,40 @@
     const long = formatMonthLong(selectedMonth);
     els.navMonthLabel.textContent = long;
     els.heroMonthLabel.textContent = long;
+    if (els.cardsMonthLabel) els.cardsMonthLabel.textContent = long;
   }
 
   function renderKPIs() {
     const t = totalsForMonth(selectedMonth);
-    const net = t.income - t.outgoing - t.investment - t.other;
+    const cards = cardsTotalForMonth(selectedMonth);
+    const leftover = t.income - t.outgoing - t.investment - t.other - cards;
 
     els.kpiIncome.textContent = fmtGBP.format(t.income);
     els.kpiOutgoings.textContent = fmtGBP.format(t.outgoing);
     els.kpiInvestments.textContent = fmtGBP.format(t.investment);
-    els.kpiNet.textContent = fmtGBP.format(net);
+    els.kpiCards.textContent = fmtGBP.format(cards);
+    els.kpiNet.textContent = fmtGBP.format(leftover);
 
     const prevMonth = shiftMonth(selectedMonth, -1);
     const prev = totalsForMonth(prevMonth);
+    const prevCards = cardsTotalForMonth(prevMonth);
 
     els.kpiIncomeHint.textContent = monthOverMonth(t.income, prev.income, "vs last month");
     els.kpiOutgoingsHint.textContent = monthOverMonth(t.outgoing, prev.outgoing, "vs last month");
     els.kpiInvestmentsHint.textContent = monthOverMonth(t.investment, prev.investment, "vs last month");
 
-    if (net >= 0) {
-      els.kpiNetHint.textContent = "You're in the black this month";
+    if (store.cards.length === 0) {
+      els.kpiCardsHint.textContent = "No cards added";
     } else {
-      els.kpiNetHint.textContent = "Spending exceeds income this month";
+      els.kpiCardsHint.textContent = monthOverMonth(cards, prevCards, "vs last month");
+    }
+
+    if (t.income === 0 && cards === 0 && t.outgoing === 0 && t.investment === 0 && t.other === 0) {
+      els.kpiNetHint.textContent = "After outgoings, investments & card balances";
+    } else if (leftover >= 0) {
+      els.kpiNetHint.textContent = `${fmtGBP.format(leftover)} left after the month settles`;
+    } else {
+      els.kpiNetHint.textContent = `${fmtGBP.format(Math.abs(leftover))} short this month`;
     }
   }
 
@@ -423,8 +527,6 @@
         .join("");
     }
 
-    // Filter dropdown stays static (typed filter), nothing to do.
-
     // Render category list
     if (store.categories.length === 0) {
       els.categoryList.innerHTML = `
@@ -454,16 +556,82 @@
               <span class="cat-item__name" style="border-left:3px solid ${TYPE_COLOR[c.type]};padding-left:10px">${escapeHtml(c.name)}</span>
               <span class="cat-item__type">${escapeHtml(TYPE_LABEL[c.type])}${inUse ? " · in use" : ""}</span>
             </div>
-            <button type="button" class="icon-btn icon-btn--danger" data-cat-del="${c.id}" aria-label="Delete category ${escapeHtml(c.name)}">
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                  d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>
-              </svg>
-            </button>
+            <div class="ccard__actions">
+              <button type="button" class="icon-btn" data-cat-edit="${c.id}" aria-label="Edit category ${escapeHtml(c.name)}">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                    d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"/>
+                </svg>
+              </button>
+              <button type="button" class="icon-btn icon-btn--danger" data-cat-del="${c.id}" aria-label="Delete category ${escapeHtml(c.name)}">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                    d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>
+                </svg>
+              </button>
+            </div>
           </li>`);
       }
     }
     els.categoryList.innerHTML = items.join("");
+  }
+
+  function renderCards() {
+    if (!els.cardsGrid) return;
+    if (store.cards.length === 0) {
+      els.cardsGrid.innerHTML = `
+        <div class="ccard ccard--empty">
+          <p>No cards yet. Add your first one below — e.g. “Amex” or “Barclaycard”.</p>
+        </div>`;
+      return;
+    }
+    const html = store.cards
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((c) => {
+        const bal = cardBalance(c.id, selectedMonth);
+        const value = bal === 0 ? "" : String(bal);
+        return `
+          <article class="ccard" data-card-id="${c.id}">
+            <div class="ccard__head">
+              <div class="ccard__name-wrap">
+                <span class="ccard__chip" aria-hidden="true"></span>
+                <h3 class="ccard__name">${escapeHtml(c.name)}</h3>
+              </div>
+              <div class="ccard__actions">
+                <button type="button" class="icon-btn" data-card-edit="${c.id}" aria-label="Rename ${escapeHtml(c.name)}">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"/>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn--danger" data-card-del="${c.id}" aria-label="Delete ${escapeHtml(c.name)}">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="ccard__amount-row">
+              <span class="ccard__currency">£</span>
+              <input
+                type="number"
+                class="ccard__input"
+                inputmode="decimal"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value="${value}"
+                aria-label="Balance on ${escapeHtml(c.name)} for ${escapeHtml(formatMonthLong(selectedMonth))}"
+                data-card-balance="${c.id}"
+              />
+            </div>
+            <p class="ccard__hint">Balance for ${escapeHtml(formatMonthLong(selectedMonth))}</p>
+          </article>`;
+      })
+      .join("");
+    els.cardsGrid.innerHTML = html;
   }
 
   function renderTrendChart() {
@@ -475,14 +643,17 @@
     const incomeData = [];
     const outgoingData = [];
     const investmentData = [];
+    const cardsData = [];
     const netData = [];
 
     for (const m of months) {
       const t = totalsForMonth(m);
+      const cards = cardsTotalForMonth(m);
       incomeData.push(t.income);
       outgoingData.push(t.outgoing);
       investmentData.push(t.investment);
-      netData.push(t.income - t.outgoing - t.investment - t.other);
+      cardsData.push(cards);
+      netData.push(t.income - t.outgoing - t.investment - t.other - cards);
     }
 
     const data = {
@@ -516,8 +687,17 @@
           order: 2,
         },
         {
+          type: "bar",
+          label: "Card balances",
+          data: cardsData.map((v) => -v),
+          backgroundColor: "rgba(191, 90, 242, 0.8)",
+          borderRadius: 6,
+          stack: "flow-neg",
+          order: 2,
+        },
+        {
           type: "line",
-          label: "Net",
+          label: "Leftover",
           data: netData,
           borderColor: "#2997ff",
           backgroundColor: "rgba(41, 151, 255, 0.12)",
@@ -632,9 +812,65 @@
     });
 
     els.categoryList.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-cat-del]");
-      if (!btn) return;
-      deleteCategory(btn.getAttribute("data-cat-del"));
+      const editBtn = e.target.closest("button[data-cat-edit]");
+      if (editBtn) {
+        openCategoryDialog(editBtn.getAttribute("data-cat-edit"));
+        return;
+      }
+      const delBtn = e.target.closest("button[data-cat-del]");
+      if (delBtn) deleteCategory(delBtn.getAttribute("data-cat-del"));
+    });
+
+    // Category edit dialog
+    els.categoryDialogClose.addEventListener("click", () => closeDialog(els.categoryDialog));
+    els.categoryDialogCancel.addEventListener("click", () => closeDialog(els.categoryDialog));
+    els.categoryDialog.addEventListener("click", (e) => {
+      if (e.target === els.categoryDialog) closeDialog(els.categoryDialog);
+    });
+    els.categoryEditForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      saveCategoryFromForm();
+    });
+
+    // Cards
+    els.cardForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      addCardFromForm();
+    });
+
+    els.cardsGrid.addEventListener("click", (e) => {
+      const editBtn = e.target.closest("button[data-card-edit]");
+      if (editBtn) {
+        openCardDialog(editBtn.getAttribute("data-card-edit"));
+        return;
+      }
+      const delBtn = e.target.closest("button[data-card-del]");
+      if (delBtn) deleteCard(delBtn.getAttribute("data-card-del"));
+    });
+
+    // Save card balance on input change (commits on blur or Enter for snappy UX)
+    els.cardsGrid.addEventListener("change", (e) => {
+      const inp = e.target.closest("input[data-card-balance]");
+      if (!inp) return;
+      handleCardBalanceInput(inp);
+    });
+    els.cardsGrid.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const inp = e.target.closest("input[data-card-balance]");
+      if (!inp) return;
+      e.preventDefault();
+      inp.blur();
+    });
+
+    // Card edit dialog
+    els.cardDialogClose.addEventListener("click", () => closeDialog(els.cardDialog));
+    els.cardDialogCancel.addEventListener("click", () => closeDialog(els.cardDialog));
+    els.cardDialog.addEventListener("click", (e) => {
+      if (e.target === els.cardDialog) closeDialog(els.cardDialog);
+    });
+    els.cardEditForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      saveCardFromForm();
     });
 
     els.exportBtn.addEventListener("click", exportData);
@@ -643,7 +879,10 @@
     els.resetBtn.addEventListener("click", resetData);
 
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && els.entryDialog.open) closeEntryDialog();
+      if (e.key !== "Escape") return;
+      if (els.entryDialog.open) closeDialog(els.entryDialog);
+      else if (els.categoryDialog.open) closeDialog(els.categoryDialog);
+      else if (els.cardDialog.open) closeDialog(els.cardDialog);
     });
 
     els.footerYear.textContent = new Date().getFullYear();
@@ -691,8 +930,19 @@
   }
 
   function closeEntryDialog() {
-    if (els.entryDialog.open) els.entryDialog.close();
-    else els.entryDialog.removeAttribute("open");
+    closeDialog(els.entryDialog);
+  }
+
+  function closeDialog(dlg) {
+    if (!dlg) return;
+    if (dlg.open) dlg.close();
+    else dlg.removeAttribute("open");
+  }
+
+  function showDialog(dlg) {
+    if (!dlg) return;
+    if (typeof dlg.showModal === "function") dlg.showModal();
+    else dlg.setAttribute("open", "");
   }
 
   function saveEntryFromForm() {
@@ -777,6 +1027,126 @@
     toast("Category deleted");
   }
 
+  function openCategoryDialog(id) {
+    const cat = categoryById(id);
+    if (!cat) return;
+    els.editCatId.value = cat.id;
+    els.editCatName.value = cat.name;
+    els.editCatType.value = cat.type;
+    showDialog(els.categoryDialog);
+    setTimeout(() => els.editCatName.focus(), 50);
+  }
+
+  function saveCategoryFromForm() {
+    const id = els.editCatId.value;
+    const cat = categoryById(id);
+    if (!cat) return closeDialog(els.categoryDialog);
+    const name = els.editCatName.value.trim();
+    const type = els.editCatType.value;
+    if (!name) return;
+    if (
+      store.categories.some(
+        (c) =>
+          c.id !== id &&
+          c.name.toLowerCase() === name.toLowerCase() &&
+          c.type === type
+      )
+    ) {
+      toast("Another category already has that name and type.");
+      return;
+    }
+    cat.name = name;
+    cat.type = type;
+    saveStore(store);
+    closeDialog(els.categoryDialog);
+    render();
+    toast("Category updated");
+  }
+
+  // -----------------------------------------------------------
+  // Cards
+  // -----------------------------------------------------------
+  function addCardFromForm() {
+    const name = els.cardName.value.trim();
+    if (!name) return;
+    if (store.cards.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      toast("You already have a card with that name.");
+      return;
+    }
+    store.cards.push({ id: uid(), name });
+    saveStore(store);
+    els.cardName.value = "";
+    render();
+    toast("Card added");
+  }
+
+  function handleCardBalanceInput(inp) {
+    const cardId = inp.getAttribute("data-card-balance");
+    if (!cardId) return;
+    const raw = inp.value.trim();
+    let amount = raw === "" ? 0 : parseFloat(raw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast("Please enter a positive amount.");
+      const existing = cardBalance(cardId, selectedMonth);
+      inp.value = existing === 0 ? "" : String(existing);
+      return;
+    }
+    amount = Math.round(amount * 100) / 100;
+    setCardBalance(cardId, selectedMonth, amount);
+    saveStore(store);
+    // Re-render KPIs and chart only — leave the input alone so the user keeps focus context
+    renderKPIs();
+    renderTrendChart();
+  }
+
+  function openCardDialog(id) {
+    const card = cardById(id);
+    if (!card) return;
+    els.editCardId.value = card.id;
+    els.editCardName.value = card.name;
+    showDialog(els.cardDialog);
+    setTimeout(() => els.editCardName.focus(), 50);
+  }
+
+  function saveCardFromForm() {
+    const id = els.editCardId.value;
+    const card = cardById(id);
+    if (!card) return closeDialog(els.cardDialog);
+    const name = els.editCardName.value.trim();
+    if (!name) return;
+    if (
+      store.cards.some(
+        (c) => c.id !== id && c.name.toLowerCase() === name.toLowerCase()
+      )
+    ) {
+      toast("You already have a card with that name.");
+      return;
+    }
+    card.name = name;
+    saveStore(store);
+    closeDialog(els.cardDialog);
+    render();
+    toast("Card updated");
+  }
+
+  function deleteCard(id) {
+    const card = cardById(id);
+    if (!card) return;
+    const used = store.cardBalances.filter((b) => b.cardId === id).length;
+    const msg =
+      used > 0
+        ? `Delete “${card.name}”? ${used} month${used === 1 ? "" : "s"} of balances will also be removed.`
+        : `Delete “${card.name}”?`;
+    if (!confirm(msg)) return;
+    store.cards = store.cards.filter((c) => c.id !== id);
+    if (used > 0) {
+      store.cardBalances = store.cardBalances.filter((b) => b.cardId !== id);
+    }
+    saveStore(store);
+    render();
+    toast("Card deleted");
+  }
+
   // -----------------------------------------------------------
   // Data import / export / reset
   // -----------------------------------------------------------
@@ -817,6 +1187,8 @@
           schemaVersion: SCHEMA_VERSION,
           categories: parsed.categories,
           entries: parsed.entries,
+          cards: Array.isArray(parsed.cards) ? parsed.cards : [],
+          cardBalances: Array.isArray(parsed.cardBalances) ? parsed.cardBalances : [],
         };
         saveStore(store);
         render();
@@ -831,7 +1203,7 @@
   }
 
   function resetData() {
-    if (!confirm("Reset everything? All categories and entries will be deleted.")) return;
+    if (!confirm("Reset everything? All categories, cards, entries and balances will be deleted.")) return;
     if (!confirm("Are you absolutely sure? This cannot be undone.")) return;
     localStorage.removeItem(STORAGE_KEY);
     store = loadStore();
