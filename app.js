@@ -9,10 +9,10 @@
   // Storage
   // -----------------------------------------------------------
   const STORAGE_KEY = "vladbudget.v1";
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'other'}} Category */
-  /** @typedef {{id:string,date:string,categoryId:string,amount:number,note:string}} Entry */
+  /** @typedef {{id:string,month:string,categoryId:string,amount:number,note:string}} Entry */
   /** @typedef {{id:string,name:string}} Card */
   /** @typedef {{cardId:string,month:string,amount:number}} CardBalance */
   /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[]}} Store */
@@ -76,6 +76,17 @@
     }
     if (!Array.isArray(s.cardBalances)) {
       s.cardBalances = [];
+      changed = true;
+    }
+    // v2 → v3: collapse per-entry `date` to `month` (YYYY-MM)
+    for (const e of s.entries) {
+      if (e.month) continue;
+      if (typeof e.date === "string" && e.date.length >= 7) {
+        e.month = e.date.slice(0, 7);
+      } else {
+        e.month = monthKeyFromDate(new Date());
+      }
+      delete e.date;
       changed = true;
     }
     if (s.schemaVersion !== SCHEMA_VERSION) {
@@ -176,7 +187,7 @@
     entryDialogClose: $("#entryDialogClose"),
     entryDialogCancel: $("#entryDialogCancel"),
     entryForm: $("#entryForm"),
-    entryDate: $("#entryDate"),
+    entryMonth: $("#entryMonth"),
     entryCategory: $("#entryCategory"),
     entryAmount: $("#entryAmount"),
     entryNote: $("#entryNote"),
@@ -278,14 +289,21 @@
 
   function entriesForMonth(monthKey) {
     return store.entries
-      .filter((e) => monthKeyFromIsoDate(e.date) === monthKey)
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      .filter((e) => e.month === monthKey)
+      .sort((a, b) => {
+        // Sort by category name for a stable, scannable order within a month.
+        const ca = categoryById(a.categoryId);
+        const cb = categoryById(b.categoryId);
+        const na = ca ? ca.name : "";
+        const nb = cb ? cb.name : "";
+        return na.localeCompare(nb);
+      });
   }
 
   function totalsForMonth(monthKey) {
     const totals = { income: 0, outgoing: 0, investment: 0, other: 0 };
     for (const e of store.entries) {
-      if (monthKeyFromIsoDate(e.date) !== monthKey) continue;
+      if (e.month !== monthKey) continue;
       const cat = categoryById(e.categoryId);
       if (!cat) continue;
       totals[cat.type] += e.amount;
@@ -405,7 +423,7 @@
     // Aggregate per category for this month
     const byCat = new Map();
     for (const e of store.entries) {
-      if (monthKeyFromIsoDate(e.date) !== selectedMonth) continue;
+      if (e.month !== selectedMonth) continue;
       const cur = byCat.get(e.categoryId) || { total: 0, count: 0 };
       cur.total += e.amount;
       cur.count += 1;
@@ -483,7 +501,6 @@
         const sign = type === "income" ? "+" : "−";
         return `
           <tr data-id="${e.id}">
-            <td>${escapeHtml(formatDateShort(e.date))}</td>
             <td>
               <span class="cat-pill" style="color:${color}">
                 ${escapeHtml(cat ? cat.name : "Uncategorised")}
@@ -904,18 +921,14 @@
       if (!e) return;
       els.entryDialogTitle.textContent = "Edit entry";
       els.entryId.value = e.id;
-      els.entryDate.value = e.date;
+      els.entryMonth.value = e.month;
       els.entryCategory.value = e.categoryId;
       els.entryAmount.value = String(e.amount);
       els.entryNote.value = e.note || "";
     } else {
       els.entryDialogTitle.textContent = "Add entry";
       els.entryId.value = "";
-      // Default to first day of selected month if it's not the current month;
-      // otherwise today's date.
-      const todayKey = monthKeyFromDate(new Date());
-      els.entryDate.value =
-        selectedMonth === todayKey ? todayIso() : firstOfMonthIso(selectedMonth);
+      els.entryMonth.value = selectedMonth;
       els.entryCategory.selectedIndex = 0;
       els.entryAmount.value = "";
       els.entryNote.value = "";
@@ -947,30 +960,29 @@
 
   function saveEntryFromForm() {
     const id = els.entryId.value || uid();
-    const date = els.entryDate.value;
+    const month = els.entryMonth.value;
     const categoryId = els.entryCategory.value;
     const amount = parseFloat(els.entryAmount.value);
     const note = (els.entryNote.value || "").trim();
 
-    if (!date || !categoryId || !Number.isFinite(amount) || amount < 0) {
-      toast("Please fill in date, category and a valid amount.");
+    if (!month || !/^\d{4}-\d{2}$/.test(month) || !categoryId || !Number.isFinite(amount) || amount < 0) {
+      toast("Please fill in month, category and a valid amount.");
       return;
     }
 
     const existing = store.entries.find((e) => e.id === id);
     if (existing) {
-      existing.date = date;
+      existing.month = month;
       existing.categoryId = categoryId;
       existing.amount = amount;
       existing.note = note;
     } else {
-      store.entries.push({ id, date, categoryId, amount, note });
+      store.entries.push({ id, month, categoryId, amount, note });
     }
     saveStore(store);
 
     // If the entry's month differs from the selected month, jump to it
-    const entryMonth = monthKeyFromIsoDate(date);
-    if (entryMonth !== selectedMonth) selectedMonth = entryMonth;
+    if (month !== selectedMonth) selectedMonth = month;
 
     closeEntryDialog();
     render();
@@ -1183,10 +1195,22 @@
         ) {
           return;
         }
+        // Migrate imported entries from `date` to `month` if needed.
+        const importedEntries = parsed.entries.map((e) => {
+          if (e && e.month) return e;
+          const cloned = Object.assign({}, e);
+          if (typeof cloned.date === "string" && cloned.date.length >= 7) {
+            cloned.month = cloned.date.slice(0, 7);
+          } else {
+            cloned.month = monthKeyFromDate(new Date());
+          }
+          delete cloned.date;
+          return cloned;
+        });
         store = {
           schemaVersion: SCHEMA_VERSION,
           categories: parsed.categories,
-          entries: parsed.entries,
+          entries: importedEntries,
           cards: Array.isArray(parsed.cards) ? parsed.cards : [],
           cardBalances: Array.isArray(parsed.cardBalances) ? parsed.cardBalances : [],
         };

@@ -46,12 +46,12 @@ Data is stored under the `vladbudget.v1` key in `localStorage`:
 
 ```jsonc
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "categories": [
     { "id": "…", "name": "Salary", "type": "income" }
   ],
   "entries": [
-    { "id": "…", "date": "2026-05-01", "categoryId": "…", "amount": 2500, "note": "May salary" }
+    { "id": "…", "month": "2026-05", "categoryId": "…", "amount": 2500, "note": "May salary" }
   ],
   "cards": [
     { "id": "…", "name": "Amex" },
@@ -63,4 +63,4 @@ Data is stored under the `vladbudget.v1` key in `localStorage`:
 }
 ```
 
-Use **Export JSON** in the Data section to back this up. Older v1 exports (without `cards`/`cardBalances`) are migrated automatically on import.
+Use **Export JSON** in the Data section to back this up. Older v1/v2 exports (with per-entry `date` strings) are migrated to month-only on import.
