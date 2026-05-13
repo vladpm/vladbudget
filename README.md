@@ -7,7 +7,7 @@ A quiet, Apple-inspired monthly budgeting app. Log income, set outgoings, invest
 ## Features
 
 - **Add, edit and delete monthly entries** against custom categories.
-- **Recurring entries** — tick “Repeat every month” when adding salary or fixed spending and it shows in every future month automatically. Stop a recurring entry from any month onward without losing past history.
+- **Recurring entries** — toggle the "Recurring" checkbox directly in the entries table to make any line repeat every month, or use the dialog to set a specific **end month** (e.g. a 12-month gym membership). Past months keep their copy when you stop a recurring entry.
 - **Categories** grouped by type: **Income**, **Set outgoings**, **Investments**, **Savings**, **Other**. Rename, retype or delete any.
 - **Card balances** — track this month's balance on each credit card (Amex, Barclaycard, or any you add). Card names are editable; per-month balances save inline as you type.
 - **“Leftover” KPI** that subtracts outgoings, investments **and** card balances from your income, so you see what's actually yours after the month settles.

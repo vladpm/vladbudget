@@ -210,6 +210,8 @@
     entryNote: $("#entryNote"),
     entryRecurring: $("#entryRecurring"),
     entryRecurringHint: $("#entryRecurringHint"),
+    entryEndMonth: $("#entryEndMonth"),
+    entryEndMonthField: $("#entryEndMonthField"),
     entryId: $("#entryId"),
 
     categoryDialog: $("#categoryDialog"),
@@ -532,33 +534,28 @@
         const color = TYPE_COLOR[type];
         const sign = type === "income" ? "+" : "−";
         const isRecurring = !!e.recurring;
-        const startedThisMonth = e.month === selectedMonth;
-        const recurringBadge = isRecurring
-          ? `<span class="recur-badge" title="Repeats every month from ${escapeHtml(formatMonthLong(e.month))}">
-               <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
-                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                   d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/>
-               </svg>
-               <span>Recurring</span>
-             </span>`
+        const endHint = isRecurring && e.endMonth
+          ? `<span class="recur-until">until ${escapeHtml(formatMonthLong(e.endMonth))}</span>`
           : "";
-        const stopBtn = isRecurring && !startedThisMonth
-          ? `<button type="button" class="icon-btn" data-act="stop" aria-label="Stop recurring from this month" title="Stop recurring from this month onward">
-               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                 <rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
-               </svg>
-             </button>`
-          : "";
+        const checkboxTitle = isRecurring
+          ? `Recurring from ${formatMonthLong(e.month)}${e.endMonth ? " until " + formatMonthLong(e.endMonth) : ""}`
+          : "One-off entry — tick to repeat every month";
         return `
           <tr data-id="${e.id}">
             <td>
               <span class="cat-pill" style="color:${color}">
                 ${escapeHtml(cat ? cat.name : "Uncategorised")}
               </span>
-              ${recurringBadge}
               <div class="bcard__count">${escapeHtml(cat ? TYPE_LABEL[type] : "")}</div>
             </td>
             <td>${escapeHtml(e.note || "")}</td>
+            <td class="col-recur">
+              <label class="row-check" title="${escapeHtml(checkboxTitle)}">
+                <input type="checkbox" data-act="toggle-recurring" ${isRecurring ? "checked" : ""} aria-label="Recurring" />
+                <span class="row-check__box" aria-hidden="true"></span>
+              </label>
+              ${endHint}
+            </td>
             <td class="num amt amt--${type}">${sign}${fmtGBPCents.format(e.amount)}</td>
             <td class="num">
               <button type="button" class="icon-btn" data-act="edit" aria-label="Edit entry">
@@ -567,7 +564,6 @@
                     d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"/>
                 </svg>
               </button>
-              ${stopBtn}
               <button type="button" class="icon-btn icon-btn--danger" data-act="delete" aria-label="Delete entry">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
@@ -874,7 +870,11 @@
       saveEntryFromForm();
     });
 
-    els.entryMonth.addEventListener("change", () => updateRecurringHint());
+    els.entryMonth.addEventListener("change", () => {
+      updateRecurringHint();
+      updateEndMonthVisibility();
+    });
+    els.entryRecurring.addEventListener("change", () => updateEndMonthVisibility());
 
     els.filterType.addEventListener("change", () => renderTable());
 
@@ -886,7 +886,15 @@
       if (!id) return;
       if (btn.dataset.act === "edit") openEntryDialog(id);
       if (btn.dataset.act === "delete") deleteEntry(id);
-      if (btn.dataset.act === "stop") stopRecurring(id);
+    });
+
+    els.entryTableBody.addEventListener("change", (e) => {
+      const cb = e.target.closest('input[data-act="toggle-recurring"]');
+      if (!cb) return;
+      const tr = cb.closest("tr");
+      const id = tr && tr.dataset.id;
+      if (!id) return;
+      toggleRecurringInline(id, cb);
     });
 
     els.categoryForm.addEventListener("submit", (e) => {
@@ -992,6 +1000,7 @@
       els.entryAmount.value = String(e.amount);
       els.entryNote.value = e.note || "";
       els.entryRecurring.checked = !!e.recurring;
+      els.entryEndMonth.value = e.endMonth || "";
     } else {
       els.entryDialogTitle.textContent = "Add entry";
       els.entryId.value = "";
@@ -1000,8 +1009,10 @@
       els.entryAmount.value = "";
       els.entryNote.value = "";
       els.entryRecurring.checked = false;
+      els.entryEndMonth.value = "";
     }
     updateRecurringHint();
+    updateEndMonthVisibility();
 
     if (typeof els.entryDialog.showModal === "function") {
       els.entryDialog.showModal();
@@ -1020,6 +1031,15 @@
     }
     els.entryRecurringHint.textContent =
       `Repeats automatically in every month from ${formatMonthLong(month)} onward.`;
+  }
+
+  function updateEndMonthVisibility() {
+    if (!els.entryEndMonthField) return;
+    const on = !!els.entryRecurring.checked;
+    els.entryEndMonthField.hidden = !on;
+    if (!on) els.entryEndMonth.value = "";
+    // Constrain end month ≥ start month
+    if (els.entryMonth.value) els.entryEndMonth.min = els.entryMonth.value;
   }
 
   function closeEntryDialog() {
@@ -1045,9 +1065,19 @@
     const amount = parseFloat(els.entryAmount.value);
     const note = (els.entryNote.value || "").trim();
     const recurring = !!els.entryRecurring.checked;
+    const endMonthRaw = (els.entryEndMonth.value || "").trim();
+    const endMonth = recurring && endMonthRaw ? endMonthRaw : null;
 
     if (!month || !/^\d{4}-\d{2}$/.test(month) || !categoryId || !Number.isFinite(amount) || amount < 0) {
       toast("Please fill in month, category and a valid amount.");
+      return;
+    }
+    if (endMonth && !/^\d{4}-\d{2}$/.test(endMonth)) {
+      toast("End month doesn't look right.");
+      return;
+    }
+    if (endMonth && endMonth < month) {
+      toast("End month can't be before the start month.");
       return;
     }
 
@@ -1057,11 +1087,10 @@
       existing.categoryId = categoryId;
       existing.amount = amount;
       existing.note = note;
-      // If recurring is being toggled off, clear endMonth too.
-      if (existing.recurring && !recurring) existing.endMonth = null;
       existing.recurring = recurring;
+      existing.endMonth = endMonth;
     } else {
-      store.entries.push({ id, month, categoryId, amount, note, recurring, endMonth: null });
+      store.entries.push({ id, month, categoryId, amount, note, recurring, endMonth });
     }
     saveStore(store);
 
@@ -1086,23 +1115,43 @@
     toast("Entry deleted");
   }
 
-  function stopRecurring(id) {
+  function toggleRecurringInline(id, checkbox) {
     const e = store.entries.find((x) => x.id === id);
-    if (!e || !e.recurring) return;
-    if (e.month === selectedMonth) {
-      // Stopping in the start month is the same as deleting it entirely.
-      if (!confirm("This recurring entry starts this month. Stopping it removes it entirely. Continue?")) return;
-      store.entries = store.entries.filter((x) => x.id !== id);
+    if (!e) return;
+    const wantRecurring = !!checkbox.checked;
+
+    if (wantRecurring) {
+      // Turning recurring ON. If we're viewing a future month, anchor the
+      // start month to the entry's existing month (which is its origin).
+      e.recurring = true;
+      // Clear any stale endMonth that's now in the past.
+      if (e.endMonth && e.endMonth < e.month) e.endMonth = null;
       saveStore(store);
       render();
-      toast("Entry deleted");
+      toast(`Repeating from ${formatMonthLong(e.month)} onward`);
       return;
     }
-    if (!confirm(`Stop this recurring entry from ${formatMonthLong(selectedMonth)} onward? Past months keep it.`)) return;
+
+    // Turning recurring OFF.
+    if (selectedMonth === e.month) {
+      // Same month as the start — simple toggle: it becomes a one-off.
+      e.recurring = false;
+      e.endMonth = null;
+      saveStore(store);
+      render();
+      toast("No longer recurring");
+      return;
+    }
+
+    // We're viewing a later month. Two reasonable interpretations:
+    //   1. Stop from this month onward (keeps past months).
+    //   2. Remove the recurring template entirely (wipes every month).
+    // Default behaviour: stop from this month onward (least destructive).
     e.endMonth = shiftMonth(selectedMonth, -1);
+    // Recurring stays true so past months still show it.
     saveStore(store);
     render();
-    toast("Recurring stopped");
+    toast(`Stopped from ${formatMonthLong(selectedMonth)} onward`);
   }
 
   // -----------------------------------------------------------

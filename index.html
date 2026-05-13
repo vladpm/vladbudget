@@ -264,6 +264,7 @@
                 <tr>
                   <th scope="col">Category</th>
                   <th scope="col">Note</th>
+                  <th scope="col" class="col-recur">Recurring</th>
                   <th scope="col" class="num">Amount</th>
                   <th scope="col" class="num"><span class="visually-hidden">Actions</span></th>
                 </tr>
@@ -415,6 +416,11 @@
                 <span class="check__hint" id="entryRecurringHint">Repeats automatically in every month from the start month onward.</span>
               </span>
             </label>
+          </div>
+          <div class="field" id="entryEndMonthField" hidden>
+            <label for="entryEndMonth">End month <span class="muted">(optional)</span></label>
+            <input type="month" id="entryEndMonth" />
+            <p class="field__hint">Last month it should appear. Leave empty to repeat forever.</p>
           </div>
           <input type="hidden" id="entryId" />
         </div>
