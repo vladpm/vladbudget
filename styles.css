@@ -28,6 +28,7 @@
   --accent-income: #0066cc;
   --accent-outgoing: #ff453a;
   --accent-investment: #30d158;
+  --accent-savings: #5e5ce6;
   --accent-other: #ff9f0a;
   --accent-cards: #bf5af2;
   --accent-net: #2997ff;
@@ -567,6 +568,9 @@ a:hover {
 .dot--investments {
   background: var(--accent-investment);
 }
+.dot--savings {
+  background: var(--accent-savings);
+}
 .dot--cards {
   background: var(--accent-cards);
 }
@@ -876,6 +880,9 @@ a:hover {
 }
 .entry-table .amt--investment {
   color: var(--primary);
+}
+.entry-table .amt--savings {
+  color: var(--accent-savings);
 }
 
 .cat-pill {

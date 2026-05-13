@@ -127,6 +127,11 @@
               <p class="kpi__hint" id="kpiInvestmentsHint">No entries yet</p>
             </article>
             <article class="kpi" role="listitem">
+              <p class="kpi__label">Savings</p>
+              <p class="kpi__value" id="kpiSavings">£0</p>
+              <p class="kpi__hint" id="kpiSavingsHint">No entries yet</p>
+            </article>
+            <article class="kpi" role="listitem">
               <p class="kpi__label">Card balances</p>
               <p class="kpi__value" id="kpiCards">£0</p>
               <p class="kpi__hint" id="kpiCardsHint">No cards added</p>
@@ -134,7 +139,7 @@
             <article class="kpi kpi--accent" role="listitem">
               <p class="kpi__label">Leftover</p>
               <p class="kpi__value" id="kpiNet">£0</p>
-              <p class="kpi__hint" id="kpiNetHint">After outgoings, investments &amp; card balances</p>
+              <p class="kpi__hint" id="kpiNetHint">After outgoings, investments, savings &amp; card balances</p>
             </article>
           </div>
         </div>
@@ -199,6 +204,10 @@
               <span>Investments</span>
             </div>
             <div class="chart-meta__item">
+              <span class="dot dot--savings"></span>
+              <span>Savings</span>
+            </div>
+            <div class="chart-meta__item">
               <span class="dot dot--cards"></span>
               <span>Card balances</span>
             </div>
@@ -240,6 +249,7 @@
                 <option value="income">Income</option>
                 <option value="outgoing">Set outgoings</option>
                 <option value="investment">Investments</option>
+                <option value="savings">Savings</option>
                 <option value="other">Other</option>
               </select>
             </div>
@@ -294,6 +304,7 @@
               <option value="income">Income</option>
               <option value="outgoing">Set outgoing</option>
               <option value="investment">Investment</option>
+              <option value="savings">Savings</option>
               <option value="other">Other</option>
             </select>
             <button type="submit" class="btn-primary">Add category</button>
@@ -435,6 +446,7 @@
               <option value="income">Income</option>
               <option value="outgoing">Set outgoing</option>
               <option value="investment">Investment</option>
+              <option value="savings">Savings</option>
               <option value="other">Other</option>
             </select>
           </div>

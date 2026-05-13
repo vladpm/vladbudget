@@ -27,6 +27,8 @@
     { name: "Subscriptions", type: "outgoing" },
     { name: "ISA / Stocks", type: "investment" },
     { name: "Pension top-up", type: "investment" },
+    { name: "Emergency fund", type: "savings" },
+    { name: "Holiday fund", type: "savings" },
     { name: "Discretionary", type: "other" },
   ];
 
@@ -39,6 +41,7 @@
     income: "Income",
     outgoing: "Set outgoing",
     investment: "Investment",
+    savings: "Savings",
     other: "Other",
   };
 
@@ -46,6 +49,7 @@
     income: "#30d158",
     outgoing: "#ff453a",
     investment: "#0066cc",
+    savings: "#5e5ce6",
     other: "#ff9f0a",
   };
 
@@ -151,11 +155,13 @@
     kpiIncome: $("#kpiIncome"),
     kpiOutgoings: $("#kpiOutgoings"),
     kpiInvestments: $("#kpiInvestments"),
+    kpiSavings: $("#kpiSavings"),
     kpiCards: $("#kpiCards"),
     kpiNet: $("#kpiNet"),
     kpiIncomeHint: $("#kpiIncomeHint"),
     kpiOutgoingsHint: $("#kpiOutgoingsHint"),
     kpiInvestmentsHint: $("#kpiInvestmentsHint"),
+    kpiSavingsHint: $("#kpiSavingsHint"),
     kpiCardsHint: $("#kpiCardsHint"),
     kpiNetHint: $("#kpiNetHint"),
 
@@ -301,7 +307,7 @@
   }
 
   function totalsForMonth(monthKey) {
-    const totals = { income: 0, outgoing: 0, investment: 0, other: 0 };
+    const totals = { income: 0, outgoing: 0, investment: 0, savings: 0, other: 0 };
     for (const e of store.entries) {
       if (e.month !== monthKey) continue;
       const cat = categoryById(e.categoryId);
@@ -342,7 +348,7 @@
   function leftoverForMonth(monthKey) {
     const t = totalsForMonth(monthKey);
     const cards = cardsTotalForMonth(monthKey);
-    return t.income - t.outgoing - t.investment - t.other - cards;
+    return t.income - t.outgoing - t.investment - t.savings - t.other - cards;
   }
 
   function trailingMonths(n) {
@@ -379,11 +385,12 @@
   function renderKPIs() {
     const t = totalsForMonth(selectedMonth);
     const cards = cardsTotalForMonth(selectedMonth);
-    const leftover = t.income - t.outgoing - t.investment - t.other - cards;
+    const leftover = t.income - t.outgoing - t.investment - t.savings - t.other - cards;
 
     els.kpiIncome.textContent = fmtGBP.format(t.income);
     els.kpiOutgoings.textContent = fmtGBP.format(t.outgoing);
     els.kpiInvestments.textContent = fmtGBP.format(t.investment);
+    els.kpiSavings.textContent = fmtGBP.format(t.savings);
     els.kpiCards.textContent = fmtGBP.format(cards);
     els.kpiNet.textContent = fmtGBP.format(leftover);
 
@@ -394,6 +401,7 @@
     els.kpiIncomeHint.textContent = monthOverMonth(t.income, prev.income, "vs last month");
     els.kpiOutgoingsHint.textContent = monthOverMonth(t.outgoing, prev.outgoing, "vs last month");
     els.kpiInvestmentsHint.textContent = monthOverMonth(t.investment, prev.investment, "vs last month");
+    els.kpiSavingsHint.textContent = monthOverMonth(t.savings, prev.savings, "vs last month");
 
     if (store.cards.length === 0) {
       els.kpiCardsHint.textContent = "No cards added";
@@ -401,8 +409,11 @@
       els.kpiCardsHint.textContent = monthOverMonth(cards, prevCards, "vs last month");
     }
 
-    if (t.income === 0 && cards === 0 && t.outgoing === 0 && t.investment === 0 && t.other === 0) {
-      els.kpiNetHint.textContent = "After outgoings, investments & card balances";
+    if (
+      t.income === 0 && cards === 0 &&
+      t.outgoing === 0 && t.investment === 0 && t.savings === 0 && t.other === 0
+    ) {
+      els.kpiNetHint.textContent = "After outgoings, investments, savings & card balances";
     } else if (leftover >= 0) {
       els.kpiNetHint.textContent = `${fmtGBP.format(leftover)} left after the month settles`;
     } else {
@@ -444,8 +455,8 @@
     for (const v of byCat.values()) if (v.total > max) max = v.total;
 
     const cards = [];
-    // Order: by type (income, outgoing, investment, other), then by total desc
-    const typeOrder = ["income", "outgoing", "investment", "other"];
+    // Order: by type (income, outgoing, investment, savings, other), then by total desc
+    const typeOrder = ["income", "outgoing", "investment", "savings", "other"];
     const sorted = Array.from(byCat.entries())
       .map(([catId, v]) => ({ cat: categoryById(catId), ...v }))
       .filter((row) => row.cat)
@@ -557,11 +568,11 @@
     }
 
     const grouped = {};
-    for (const t of ["income", "outgoing", "investment", "other"]) grouped[t] = [];
+    for (const t of ["income", "outgoing", "investment", "savings", "other"]) grouped[t] = [];
     for (const c of store.categories) grouped[c.type].push(c);
 
     const items = [];
-    for (const t of ["income", "outgoing", "investment", "other"]) {
+    for (const t of ["income", "outgoing", "investment", "savings", "other"]) {
       const list = grouped[t]
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -660,6 +671,7 @@
     const incomeData = [];
     const outgoingData = [];
     const investmentData = [];
+    const savingsData = [];
     const cardsData = [];
     const netData = [];
 
@@ -669,8 +681,9 @@
       incomeData.push(t.income);
       outgoingData.push(t.outgoing);
       investmentData.push(t.investment);
+      savingsData.push(t.savings);
       cardsData.push(cards);
-      netData.push(t.income - t.outgoing - t.investment - t.other - cards);
+      netData.push(t.income - t.outgoing - t.investment - t.savings - t.other - cards);
     }
 
     const data = {
@@ -699,6 +712,15 @@
           label: "Investments",
           data: investmentData.map((v) => -v),
           backgroundColor: "rgba(48, 209, 88, 0.75)",
+          borderRadius: 6,
+          stack: "flow-neg",
+          order: 2,
+        },
+        {
+          type: "bar",
+          label: "Savings",
+          data: savingsData.map((v) => -v),
+          backgroundColor: "rgba(94, 92, 230, 0.85)",
           borderRadius: 6,
           stack: "flow-neg",
           order: 2,
