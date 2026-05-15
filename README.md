@@ -19,8 +19,8 @@ A quiet, Apple-inspired monthly budgeting app. Log income, set outgoings, invest
 - **Per-category breakdown** for the selected month.
 - **Filterable entry log** per month.
 - **Export / import JSON** backup. Reset everything in one click.
-- **Cross-device sync (optional)** — add Supabase credentials and sign in by magic link to access the same budget from your phone, tablet and desktop. See [Cross-device sync setup](#cross-device-sync-setup).
-- **Works offline** — data lives in the browser via `localStorage`; cloud sync, when enabled, mirrors changes to your Supabase row in the background.
+- **Cross-device sync (optional)** — paste a GitHub token and sync your data to a private Gist so the same budget is available from your phone, tablet and desktop. See [Cross-device sync setup](#cross-device-sync-setup).
+- **Works offline** — data lives in the browser via `localStorage`; when sync is connected, changes mirror to your private gist in the background.
 
 ## Run locally
 
@@ -38,25 +38,29 @@ Or just open `index.html` directly in a browser.
 
 - Vanilla HTML, CSS, JavaScript.
 - [Chart.js 4](https://www.chartjs.org/) loaded from a CDN for the trend chart.
-- [Supabase](https://supabase.com) (optional) for cross-device sync — single Postgres row per user, JSONB document, magic-link auth, RLS-protected.
-- Design system distilled from Apple's web surfaces (see [`DESIGN.md`](DESIGN.md)).
+- GitHub Gist (optional) for cross-device sync — the entire budget is stored as one private gist, accessed via the GitHub REST API with a Personal Access Token (`gist` scope only).
+- Design system distilled from Stripe's web surfaces (see [`DESIGN.md`](DESIGN.md)).
 
 ## Cross-device sync setup
 
-The app works locally with no setup. To sync across devices (phone + desktop), wire it up to a free Supabase project — takes ~5 minutes.
+The app works locally with no setup. To sync across devices (phone + desktop), connect it to a private GitHub Gist — takes ~2 minutes.
 
-1. **Create a Supabase project** at <https://supabase.com> (free tier is fine).
-2. In your project, open **SQL Editor → New query**, paste the contents of [`schema.sql`](schema.sql), and run it. This creates one `budgets` table and protects rows by user.
-3. Open **Authentication → Providers → Email** and make sure “Email” is enabled with magic links (it's the default).
-4. Open **Authentication → URL Configuration** and add your site URL to the allow-list (e.g. `https://vladpm.github.io/vladbudget/` and `http://localhost:8000` for local dev).
-5. Open **Settings → API** and copy:
-   - **Project URL** → `supabaseUrl`
-   - **anon / public** key → `supabaseAnonKey` (this key is meant to be public; RLS protects your data).
-6. Edit [`config.js`](config.js) and paste those two values in. Commit & push.
+### One-time, on your first device
 
-Then open the deployed site, type your email, click the magic link in your inbox — on whichever device you want to use — and you're synced. The header shows a small **Synced** indicator. Sign out from the **Data** section.
+1. **Create a Personal Access Token** at <https://github.com/settings/tokens?type=beta>. The only required scope is **“Gists”** (Read & Write). A classic token with the **`gist`** scope works too. Set the expiration to whatever you like.
+2. Open the deployed site → **Data** section → click **Connect to GitHub Gist**.
+3. Paste the token into the **GitHub token** field. Leave **Gist ID** empty.
+4. Click **Connect**. The app creates a private gist named `vladbudget.json` and shows you the new Gist ID. Copy it.
 
-> Conflict handling is last-write-wins. The app re-fetches when the tab regains focus and listens for realtime updates from other devices, so two-device editing converges quickly.
+### On every other device
+
+1. Open the deployed site → **Data** → **Connect to GitHub Gist**.
+2. Paste the same token + the Gist ID from step 4.
+3. Click **Connect**. The app pulls your data instantly.
+
+From then on, every change auto-syncs in the background. The header shows a small **Synced** indicator (or **Saving…** / **Offline**). The app pulls fresh on tab focus and every 60 seconds. To disconnect a device, use **Disconnect sync** in the Data section — the token & gist ID are cleared from that browser; the gist itself stays intact.
+
+> The token never leaves your browser — it's stored only in `localStorage` and sent only to `api.github.com`. The repo never sees it.
 
 ## Deployment
 

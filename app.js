@@ -150,49 +150,90 @@
   }
 
   // -----------------------------------------------------------
-  // Cloud sync (Supabase)
+  // Cloud sync (GitHub Gist)
   // -----------------------------------------------------------
-  const cfg = (typeof window !== "undefined" && window.BUDGET_CONFIG) || {};
-  const CLOUD_ENABLED = !!(
-    cfg.supabaseUrl &&
-    cfg.supabaseAnonKey &&
-    typeof window.supabase !== "undefined"
-  );
-  /** @type {ReturnType<typeof window.supabase.createClient>|null} */
-  let supa = null;
-  /** @type {{user:{id:string,email?:string}}|null} */
-  let session = null;
+  // The entire `store` document is mirrored to a private GitHub Gist.
+  // Auth: a Personal Access Token (PAT) with the `gist` scope.
+  // The PAT and Gist ID live in localStorage on each device — never
+  // committed to the repo. To sync a second device, paste the same PAT
+  // and the Gist ID into the Connect dialog there.
+  const GIST_PAT_KEY = "vladbudget.gist.pat";
+  const GIST_ID_KEY = "vladbudget.gist.id";
+  const GIST_FILENAME = "vladbudget.json";
+  const GIST_DESCRIPTION = "Vladbudget — monthly ledger";
+
+  let gistPat = "";
+  let gistId = "";
+  /** Last `updated_at` we observed from GitHub for the gist. */
+  let lastRemoteUpdatedAt = null;
+  /** True once we've successfully pulled at least once this session. */
+  let hasPulled = false;
   let cloudPushTimer = null;
   let cloudPushInFlight = false;
   let cloudPushDirty = false;
-  let lastCloudUpdatedAt = null;
-  let realtimeChannel = null;
+  let isApplyingRemote = false;
 
-  if (CLOUD_ENABLED) {
-    supa = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
+  function readGistCreds() {
+    try {
+      gistPat = localStorage.getItem(GIST_PAT_KEY) || "";
+      gistId = localStorage.getItem(GIST_ID_KEY) || "";
+    } catch (_e) {
+      gistPat = "";
+      gistId = "";
+    }
+  }
+
+  function saveGistCreds(pat, id) {
+    try {
+      if (pat) localStorage.setItem(GIST_PAT_KEY, pat);
+      else localStorage.removeItem(GIST_PAT_KEY);
+      if (id) localStorage.setItem(GIST_ID_KEY, id);
+      else localStorage.removeItem(GIST_ID_KEY);
+    } catch (_e) {
+      /* private mode etc */
+    }
+    gistPat = pat || "";
+    gistId = id || "";
+  }
+
+  function isCloudConnected() {
+    return !!(gistPat && gistId);
   }
 
   function setSyncStatus(state, label, title) {
     const el = els && els.syncStatus;
     if (!el) return;
-    if (!CLOUD_ENABLED) {
-      el.hidden = true;
-      return;
-    }
     el.hidden = !label;
     el.dataset.state = state;
     el.textContent = label || "";
     if (title) el.title = title;
   }
 
+  async function gistFetch(path, init) {
+    const opts = init || {};
+    const headers = Object.assign(
+      {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        Authorization: `Bearer ${gistPat}`,
+      },
+      opts.headers || {}
+    );
+    const res = await fetch(`https://api.github.com${path}`, {
+      ...opts,
+      headers,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const err = new Error(`GitHub ${res.status}: ${text.slice(0, 200)}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
   function queueCloudPush() {
-    if (!CLOUD_ENABLED || !session) return;
+    if (!isCloudConnected()) return;
     cloudPushDirty = true;
     if (cloudPushTimer) clearTimeout(cloudPushTimer);
     cloudPushTimer = setTimeout(flushCloudPush, 800);
@@ -200,7 +241,7 @@
   }
 
   async function flushCloudPush() {
-    if (!CLOUD_ENABLED || !session || !cloudPushDirty) return;
+    if (!isCloudConnected() || !cloudPushDirty) return;
     if (cloudPushInFlight) {
       cloudPushTimer = setTimeout(flushCloudPush, 400);
       return;
@@ -209,288 +250,244 @@
     cloudPushDirty = false;
     setSyncStatus("pending", "Saving…");
     try {
-      const { data, error } = await supa
-        .from("budgets")
-        .upsert(
-          { user_id: session.user.id, data: store },
-          { onConflict: "user_id" }
-        )
-        .select("updated_at")
-        .single();
-      if (error) throw error;
-      lastCloudUpdatedAt = data && data.updated_at;
-      setSyncStatus(
-        "ok",
-        "Synced",
-        `Synced · ${session.user.email || "signed in"}`
-      );
+      const data = await gistFetch(`/gists/${encodeURIComponent(gistId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          description: GIST_DESCRIPTION,
+          files: {
+            [GIST_FILENAME]: {
+              content: JSON.stringify(store, null, 2),
+            },
+          },
+        }),
+      });
+      lastRemoteUpdatedAt = data.updated_at;
+      setSyncStatus("ok", "Synced", `Synced · ${formatTimeShort(new Date())}`);
     } catch (err) {
-      console.error("[budget] cloud push failed", err);
+      console.error("[budget] gist push failed", err);
       cloudPushDirty = true;
-      setSyncStatus(
-        "error",
-        "Offline",
-        "Couldn’t reach the cloud. Will retry on next change."
-      );
+      if (err.status === 401 || err.status === 403) {
+        setSyncStatus("error", "Token bad", "GitHub rejected your token. Reconnect in Data.");
+      } else if (err.status === 404) {
+        setSyncStatus("error", "Gist gone", "Gist not found. Reconnect in Data.");
+      } else {
+        setSyncStatus("error", "Offline", "Will retry on next change.");
+      }
     } finally {
       cloudPushInFlight = false;
     }
   }
 
-  async function pullFromCloud(opts) {
-    if (!CLOUD_ENABLED || !session) return;
-    const force = opts && opts.force;
+  async function pullFromCloud() {
+    if (!isCloudConnected()) return;
+    if (cloudPushInFlight || cloudPushDirty) return; // don't clobber unsynced edits
     setSyncStatus("pending", "Loading…");
     try {
-      const { data, error } = await supa
-        .from("budgets")
-        .select("data, updated_at")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) {
-        // No row yet — push current local store as initial cloud copy.
+      const data = await gistFetch(`/gists/${encodeURIComponent(gistId)}`);
+      const file = data.files && data.files[GIST_FILENAME];
+      if (!file || !file.content) {
+        // Gist exists but no file yet — push current local store.
         cloudPushDirty = true;
         await flushCloudPush();
-        setSyncStatus("ok", "Synced");
+        hasPulled = true;
         return;
       }
-      const remote = data.data || {};
+      // Skip if remote hasn't changed since our last successful pull/push.
+      if (lastRemoteUpdatedAt && data.updated_at === lastRemoteUpdatedAt) {
+        hasPulled = true;
+        setSyncStatus("ok", "Synced", `Synced · ${formatTimeShort(new Date())}`);
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(file.content);
+      } catch (_e) {
+        throw new Error("Gist contents aren't valid JSON.");
+      }
+      if (!parsed || !Array.isArray(parsed.categories) || !Array.isArray(parsed.entries)) {
+        throw new Error("Gist contents don't look like a budget document.");
+      }
+      const remote = migrate(parsed);
       const remoteHasContent =
         (Array.isArray(remote.entries) && remote.entries.length > 0) ||
         (Array.isArray(remote.cards) && remote.cards.length > 0) ||
-        (Array.isArray(remote.cardBalances) && remote.cardBalances.length > 0);
+        (Array.isArray(remote.cardBalances) && remote.cardBalances.length > 0) ||
+        (Array.isArray(remote.bankBalances) && remote.bankBalances.length > 0);
       const localIsEmpty =
-        store.entries.length === 0 && store.cardBalances.length === 0;
+        store.entries.length === 0 &&
+        store.cardBalances.length === 0 &&
+        store.bankBalances.length === 0;
 
-      if (force || remoteHasContent || localIsEmpty) {
-        store = migrate(remote);
+      if (!hasPulled || remoteHasContent || localIsEmpty) {
+        isApplyingRemote = true;
+        store = remote;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
         render();
+        isApplyingRemote = false;
       } else {
-        // Local has content but remote is empty — push local up.
+        // We have local content; remote is empty. Push local up.
         cloudPushDirty = true;
         await flushCloudPush();
       }
-      lastCloudUpdatedAt = data.updated_at;
-      setSyncStatus(
-        "ok",
-        "Synced",
-        `Synced · ${session.user.email || "signed in"}`
-      );
+      lastRemoteUpdatedAt = data.updated_at;
+      hasPulled = true;
+      setSyncStatus("ok", "Synced", `Synced · ${formatTimeShort(new Date())}`);
     } catch (err) {
-      console.error("[budget] cloud pull failed", err);
-      setSyncStatus("error", "Offline", "Working from local copy.");
+      console.error("[budget] gist pull failed", err);
+      if (err.status === 401 || err.status === 403) {
+        setSyncStatus("error", "Token bad", "GitHub rejected your token. Reconnect in Data.");
+      } else if (err.status === 404) {
+        setSyncStatus("error", "Gist gone", "Gist not found. Reconnect in Data.");
+      } else {
+        setSyncStatus("error", "Offline", "Working from local copy.");
+      }
     }
   }
 
-  function subscribeRealtime() {
-    if (!CLOUD_ENABLED || !session || realtimeChannel) return;
-    try {
-      realtimeChannel = supa
-        .channel("budget-" + session.user.id)
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "budgets",
-            filter: `user_id=eq.${session.user.id}`,
+  /**
+   * Connect using a PAT, optionally with an existing Gist ID.
+   * - If `id` is empty, create a new private gist seeded with the local store.
+   * - If `id` is given, validate by fetching it.
+   */
+  async function connectGist(pat, id) {
+    if (!pat || !pat.trim()) throw new Error("Please paste a GitHub token.");
+    saveGistCreds(pat.trim(), (id || "").trim());
+    if (gistId) {
+      // Validate by pulling.
+      const data = await gistFetch(`/gists/${encodeURIComponent(gistId)}`);
+      lastRemoteUpdatedAt = data.updated_at;
+      // Apply remote contents (or push local if remote is empty)
+      hasPulled = false;
+      await pullFromCloud();
+      return { id: gistId, created: false };
+    }
+    // Create a new private gist seeded with local data.
+    const data = await gistFetch(`/gists`, {
+      method: "POST",
+      body: JSON.stringify({
+        description: GIST_DESCRIPTION,
+        public: false,
+        files: {
+          [GIST_FILENAME]: {
+            content: JSON.stringify(store, null, 2),
           },
-          (payload) => {
-            const newUpdatedAt =
-              payload && payload.new && payload.new.updated_at;
-            if (newUpdatedAt && newUpdatedAt === lastCloudUpdatedAt) return;
-            if (cloudPushInFlight || cloudPushDirty) return;
-            pullFromCloud({ force: true });
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn("[budget] realtime subscribe failed", err);
-    }
-  }
-
-  function unsubscribeRealtime() {
-    if (realtimeChannel && supa) {
-      supa.removeChannel(realtimeChannel);
-      realtimeChannel = null;
-    }
-  }
-
-  async function ensureSession() {
-    if (!CLOUD_ENABLED) return null;
-    const { data } = await supa.auth.getSession();
-    session = data && data.session ? data.session : null;
-    return session;
-  }
-
-  let pendingOtpEmail = null;
-
-  async function sendOtpEmail(email) {
-    if (!CLOUD_ENABLED) return { error: new Error("Cloud sync not configured") };
-    // No emailRedirectTo → Supabase sends a 6-digit code instead of a magic link.
-    return supa.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
+        },
+      }),
     });
+    saveGistCreds(gistPat, data.id);
+    lastRemoteUpdatedAt = data.updated_at;
+    hasPulled = true;
+    return { id: data.id, created: true };
   }
 
-  async function verifyOtpCode(email, token) {
-    if (!CLOUD_ENABLED) return { error: new Error("Cloud sync not configured") };
-    return supa.auth.verifyOtp({ email, token, type: "email" });
-  }
-
-  async function signOut() {
-    if (!CLOUD_ENABLED) return;
-    unsubscribeRealtime();
-    await flushCloudPush();
-    await supa.auth.signOut();
-    session = null;
-    setSyncStatus("off", "Sign in");
+  function disconnectGist() {
+    saveGistCreds("", "");
+    lastRemoteUpdatedAt = null;
+    hasPulled = false;
+    cloudPushDirty = false;
+    setSyncStatus("off", "Not connected");
     if (els.signOutBtn) els.signOutBtn.hidden = true;
+    if (els.connectBtn) els.connectBtn.hidden = false;
     updateSyncHint();
-    openAuthDialog("You're signed out. Sign in to keep syncing across devices.");
   }
 
   function updateSyncHint() {
     if (!els.syncHint) return;
-    if (!CLOUD_ENABLED) {
+    if (isCloudConnected()) {
       els.syncHint.textContent =
-        "Cloud sync isn’t configured — your data lives in this browser only. See the README to enable cross-device sync.";
-      return;
-    }
-    if (session) {
-      els.syncHint.textContent = `Signed in as ${session.user.email || "—"} · changes auto-sync across your devices.`;
+        `Connected to gist ${gistId.slice(0, 8)}… · changes auto-sync to GitHub. Use the same token + ID on your phone to sync there.`;
     } else {
       els.syncHint.textContent =
-        "Cloud sync is configured but you're signed out. Local changes won’t sync until you sign in.";
+        "Not connected — your data lives in this browser only. Click “Connect” to sync to a private GitHub Gist.";
     }
   }
 
-  function openAuthDialog(message) {
-    if (!els.authDialog) return;
-    if (message && els.authStatus) {
-      els.authStatus.textContent = message;
-      els.authStatus.hidden = false;
-      els.authStatus.dataset.state = "info";
+  function openConnectDialog(message) {
+    if (!els.connectDialog) return;
+    els.connectPat.value = gistPat || "";
+    els.connectGistId.value = gistId || "";
+    if (message && els.connectStatus) {
+      els.connectStatus.textContent = message;
+      els.connectStatus.hidden = false;
+      els.connectStatus.dataset.state = "info";
+    } else if (els.connectStatus) {
+      els.connectStatus.hidden = true;
     }
-    if (typeof els.authDialog.showModal === "function") {
-      els.authDialog.showModal();
+    if (typeof els.connectDialog.showModal === "function") {
+      els.connectDialog.showModal();
     } else {
-      els.authDialog.setAttribute("open", "");
+      els.connectDialog.setAttribute("open", "");
     }
+    setTimeout(() => els.connectPat.focus(), 50);
   }
 
-  function closeAuthDialog() {
-    closeDialog(els.authDialog);
+  function closeConnectDialog() {
+    closeDialog(els.connectDialog);
   }
 
-  async function handleAuthFormSubmit() {
-    const codeMode = !!els.authCodeField && !els.authCodeField.hidden;
-
-    if (!codeMode) {
-      const email = (els.authEmail.value || "").trim();
-      if (!email) return;
-      els.authSendBtn.disabled = true;
-      els.authStatus.hidden = false;
-      els.authStatus.dataset.state = "info";
-      els.authStatus.textContent = "Sending code…";
-      const { error } = await sendOtpEmail(email);
-      els.authSendBtn.disabled = false;
-      if (error) {
-        els.authStatus.dataset.state = "error";
-        els.authStatus.textContent = error.message || "Couldn’t send code.";
-        return;
+  async function handleConnectFormSubmit() {
+    const pat = (els.connectPat.value || "").trim();
+    const id = (els.connectGistId.value || "").trim();
+    if (!pat) return;
+    els.connectSubmitBtn.disabled = true;
+    els.connectStatus.hidden = false;
+    els.connectStatus.dataset.state = "info";
+    els.connectStatus.textContent = id
+      ? "Connecting to existing gist…"
+      : "Creating a new private gist…";
+    try {
+      const result = await connectGist(pat, id);
+      els.connectStatus.dataset.state = "ok";
+      els.connectStatus.textContent = result.created
+        ? `Created gist ${result.id}. Copy this ID — you'll paste it on your other devices.`
+        : "Connected. Pulling your data…";
+      if (els.connectGistId.value !== result.id) {
+        els.connectGistId.value = result.id;
       }
-      pendingOtpEmail = email;
-      els.authEmail.disabled = true;
-      els.authCodeField.hidden = false;
-      els.authBackLink.hidden = false;
-      els.authSendBtn.textContent = "Verify code";
-      els.authStatus.dataset.state = "ok";
-      els.authStatus.textContent = `We sent a 6-digit code to ${email}. Check your inbox (and spam) and type it below.`;
-      setTimeout(() => els.authCode.focus(), 50);
-      return;
-    }
-
-    // Code-entry mode
-    const code = (els.authCode.value || "").trim();
-    if (!code || !pendingOtpEmail) return;
-    els.authSendBtn.disabled = true;
-    els.authStatus.dataset.state = "info";
-    els.authStatus.textContent = "Checking code…";
-    const { error } = await verifyOtpCode(pendingOtpEmail, code);
-    els.authSendBtn.disabled = false;
-    if (error) {
-      els.authStatus.dataset.state = "error";
-      els.authStatus.textContent = error.message || "That code didn’t work. Try again or request a new one.";
-      return;
-    }
-    els.authStatus.dataset.state = "ok";
-    els.authStatus.textContent = "Signed in.";
-    // onAuthStateChange will handle the dialog close and pull.
-  }
-
-  function resetAuthForm() {
-    pendingOtpEmail = null;
-    if (els.authEmail) {
-      els.authEmail.disabled = false;
-      els.authEmail.value = "";
-    }
-    if (els.authCode) els.authCode.value = "";
-    if (els.authCodeField) els.authCodeField.hidden = true;
-    if (els.authBackLink) els.authBackLink.hidden = true;
-    if (els.authSendBtn) {
-      els.authSendBtn.textContent = "Send code";
-      els.authSendBtn.disabled = false;
-    }
-    if (els.authStatus) {
-      els.authStatus.hidden = true;
-      els.authStatus.textContent = "";
+      if (els.signOutBtn) els.signOutBtn.hidden = false;
+      if (els.connectBtn) els.connectBtn.hidden = true;
+      updateSyncHint();
+      // Close after a short pause so the user can copy the gist ID if it was just created.
+      if (!result.created) {
+        setTimeout(closeConnectDialog, 600);
+      }
+    } catch (err) {
+      els.connectStatus.dataset.state = "error";
+      els.connectStatus.textContent = err.message || "Couldn't connect.";
+    } finally {
+      els.connectSubmitBtn.disabled = false;
     }
   }
 
   async function initCloud() {
-    if (!CLOUD_ENABLED) {
+    readGistCreds();
+    if (!isCloudConnected()) {
       setSyncStatus("off", "");
+      if (els.connectBtn) els.connectBtn.hidden = false;
+      if (els.signOutBtn) els.signOutBtn.hidden = true;
       updateSyncHint();
       return;
     }
     setSyncStatus("pending", "Connecting…");
-
-    // Listen for auth state changes (handles magic link landing back here).
-    supa.auth.onAuthStateChange(async (_event, sess) => {
-      const wasSignedIn = !!session;
-      session = sess || null;
-      if (session && !wasSignedIn) {
-        closeAuthDialog();
-        resetAuthForm();
-        if (els.signOutBtn) els.signOutBtn.hidden = false;
-        updateSyncHint();
-        await pullFromCloud();
-        subscribeRealtime();
-      } else if (!session && wasSignedIn) {
-        unsubscribeRealtime();
-        if (els.signOutBtn) els.signOutBtn.hidden = true;
-        updateSyncHint();
-      }
-    });
-
-    await ensureSession();
-    if (!session) {
-      setSyncStatus("off", "Sign in");
-      updateSyncHint();
-      openAuthDialog();
-      return;
-    }
+    if (els.connectBtn) els.connectBtn.hidden = true;
     if (els.signOutBtn) els.signOutBtn.hidden = false;
     updateSyncHint();
     await pullFromCloud();
-    subscribeRealtime();
 
+    // Refresh on focus (no realtime — manual poll is fine for personal use).
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") pullFromCloud();
+    });
+    // And every 60 seconds as a gentle background refresh.
+    setInterval(() => {
+      if (document.visibilityState === "visible") pullFromCloud();
+    }, 60_000);
+  }
+
+  function formatTimeShort(d) {
+    return d.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
     });
   }
 
@@ -592,15 +589,15 @@
     syncStatus: $("#syncStatus"),
     syncHint: $("#syncHint"),
     signOutBtn: $("#signOutBtn"),
+    connectBtn: $("#connectBtn"),
 
-    authDialog: $("#authDialog"),
-    authForm: $("#authForm"),
-    authEmail: $("#authEmail"),
-    authCode: $("#authCode"),
-    authCodeField: $("#authCodeField"),
-    authBackLink: $("#authBackLink"),
-    authStatus: $("#authStatus"),
-    authSendBtn: $("#authSendBtn"),
+    connectDialog: $("#connectDialog"),
+    connectForm: $("#connectForm"),
+    connectPat: $("#connectPat"),
+    connectGistId: $("#connectGistId"),
+    connectStatus: $("#connectStatus"),
+    connectSubmitBtn: $("#connectSubmitBtn"),
+    connectDialogClose: $("#connectDialogClose"),
 
     toast: $("#toast"),
     footerYear: $("#footerYear"),
@@ -1609,22 +1606,33 @@
     els.importFile.addEventListener("change", importData);
     els.resetBtn.addEventListener("click", resetData);
 
+    if (els.connectBtn) {
+      els.connectBtn.addEventListener("click", () => openConnectDialog());
+    }
     if (els.signOutBtn) {
       els.signOutBtn.addEventListener("click", () => {
-        if (confirm("Sign out? Local data stays in this browser.")) signOut();
+        if (
+          confirm(
+            "Disconnect this device from sync? The token & gist ID will be cleared from this browser. Your local data and the gist itself stay intact."
+          )
+        ) {
+          disconnectGist();
+          toast("Disconnected");
+        }
       });
     }
-    if (els.authForm) {
-      els.authForm.addEventListener("submit", (e) => {
+    if (els.connectForm) {
+      els.connectForm.addEventListener("submit", (e) => {
         e.preventDefault();
-        handleAuthFormSubmit();
+        handleConnectFormSubmit();
       });
     }
-    if (els.authBackLink) {
-      els.authBackLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        resetAuthForm();
-        if (els.authEmail) els.authEmail.focus();
+    if (els.connectDialogClose) {
+      els.connectDialogClose.addEventListener("click", () => closeConnectDialog());
+    }
+    if (els.connectDialog) {
+      els.connectDialog.addEventListener("click", (e) => {
+        if (e.target === els.connectDialog) closeConnectDialog();
       });
     }
 
@@ -1633,6 +1641,7 @@
       if (els.entryDialog.open) closeDialog(els.entryDialog);
       else if (els.categoryDialog.open) closeDialog(els.categoryDialog);
       else if (els.cardDialog.open) closeDialog(els.cardDialog);
+      else if (els.connectDialog && els.connectDialog.open) closeConnectDialog();
     });
 
     els.footerYear.textContent = new Date().getFullYear();

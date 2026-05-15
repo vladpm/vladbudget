@@ -378,6 +378,9 @@
             one, or start over — your call.
           </p>
           <div class="data-actions">
+            <button class="btn-primary" id="connectBtn" type="button" hidden>
+              Connect to GitHub Gist
+            </button>
             <button class="btn-primary" id="exportBtn" type="button">
               Export JSON
             </button>
@@ -392,7 +395,7 @@
               aria-hidden="true"
             />
             <button class="btn-ghost" id="signOutBtn" type="button" hidden>
-              Sign out
+              Disconnect sync
             </button>
             <button class="btn-ghost btn-ghost--danger" id="resetBtn" type="button">
               Reset everything
@@ -491,46 +494,57 @@
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
     <!-- Auth gate (shown when cloud sync is configured but no session yet) -->
-    <dialog id="authDialog" class="dialog dialog--auth" aria-labelledby="authDialogTitle">
-      <form method="dialog" id="authForm" class="dialog__form" autocomplete="on">
+    <dialog id="connectDialog" class="dialog dialog--auth" aria-labelledby="connectDialogTitle">
+      <form method="dialog" id="connectForm" class="dialog__form" autocomplete="off">
         <header class="dialog__head">
-          <h3 class="display-md" id="authDialogTitle">Sign in to sync</h3>
+          <h3 class="display-md" id="connectDialogTitle">Sync to GitHub Gist</h3>
+          <button
+            type="button"
+            class="btn-icon dialog__close"
+            id="connectDialogClose"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
         </header>
         <div class="dialog__body">
           <p class="auth-lead">
-            Enter your email and we'll send you a 6-digit code. Type it in here
-            and you'll be signed in — no clicking links or jumping between
-            apps. Use the same email on your phone to get the same data.
+            Paste a GitHub <strong>Personal Access Token</strong> with the
+            <code>gist</code> scope. Your data will live in one private gist.
+            Use the same token + Gist ID on your phone to sync there.
+            <br /><br />
+            <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Create a token →</a>
           </p>
           <div class="field">
-            <label for="authEmail">Email</label>
+            <label for="connectPat">GitHub token</label>
             <input
-              type="email"
-              id="authEmail"
+              type="password"
+              id="connectPat"
               required
-              autocomplete="email"
-              inputmode="email"
-              placeholder="you@example.com"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="github_pat_… or ghp_…"
             />
+            <p class="field__hint">Stored in this browser only — never sent anywhere except api.github.com.</p>
           </div>
-          <div class="field" id="authCodeField" hidden>
-            <label for="authCode">6-digit code</label>
+          <div class="field">
+            <label for="connectGistId">Gist ID <span class="muted">(leave empty on first device)</span></label>
             <input
               type="text"
-              id="authCode"
-              autocomplete="one-time-code"
-              inputmode="numeric"
-              pattern="[0-9]{6}"
-              maxlength="6"
-              placeholder="123456"
+              id="connectGistId"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="e.g. 1a2b3c…"
             />
-            <a href="#" id="authBackLink" class="auth-back" hidden>Use a different email</a>
+            <p class="field__hint">First device: leave empty and we'll create one. Other devices: paste the ID shown after creation.</p>
           </div>
-          <p class="auth-status" id="authStatus" hidden></p>
+          <p class="auth-status" id="connectStatus" hidden></p>
         </div>
         <footer class="dialog__foot">
-          <button type="submit" class="btn-primary" id="authSendBtn">
-            Send code
+          <button type="submit" class="btn-primary" id="connectSubmitBtn">
+            Connect
           </button>
         </footer>
       </form>
@@ -607,8 +621,6 @@
     </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-    <script src="./config.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

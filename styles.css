@@ -1618,12 +1618,21 @@ a:hover {
   font-size: 14px;
   letter-spacing: 0;
 }
-.auth-back {
-  display: inline-block;
-  margin-top: 6px;
+.auth-lead code {
+  background: var(--canvas-soft);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
   font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink-secondary);
+  border: 1px solid var(--hairline);
+}
+.auth-lead a {
   color: var(--primary);
-  letter-spacing: -0.36px;
+  font-weight: 400;
+}
+.auth-lead a:hover {
+  text-decoration: underline;
 }
 .auth-status {
   margin: var(--s-sm) 0 0;
