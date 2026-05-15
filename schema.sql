@@ -14,14 +14,17 @@ create table if not exists public.budgets (
   updated_at  timestamptz not null default now()
 );
 
--- Keep updated_at fresh on every change.
 create or replace function public.touch_budgets_updated_at()
-returns trigger as $$
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
 begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 drop trigger if exists trg_budgets_touch on public.budgets;
 create trigger trg_budgets_touch

@@ -13,6 +13,6 @@
 // the database is what protects your data (see schema.sql).
 // ---------------------------------------------------------------
 window.BUDGET_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://hdojsucxhhahekxdfcju.supabase.co",
+  supabaseAnonKey: "sb_publishable_oVt8WTWCjDCG57bQs253RQ_my0SK7lY",
 };
