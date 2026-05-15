@@ -615,6 +615,208 @@ a:hover {
 }
 
 /* ============================================================
+   Monthly checkup: bank cards + journey stepper
+   ============================================================ */
+.bank-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--s-md);
+  margin-top: var(--s-xl);
+}
+
+.bank-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: var(--s-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-xs);
+  position: relative;
+}
+.bank-card--projection {
+  background: var(--ink);
+  color: var(--body-on-dark);
+  border-color: var(--ink);
+}
+
+.bank-card__label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+}
+.bank-card--projection .bank-card__label {
+  color: var(--body-muted);
+}
+
+.bank-card__amount-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bank-card__currency {
+  font-family: var(--ff-display);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--ink-muted-48);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.bank-card__input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  font-family: var(--ff-display);
+  font-size: clamp(34px, 4vw, 44px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  padding: 4px 2px;
+  width: 100%;
+  min-width: 0;
+  line-height: 1.05;
+}
+.bank-card__input:hover {
+  border-bottom-color: var(--hairline);
+}
+.bank-card__input:focus {
+  outline: none;
+  border-bottom-color: var(--primary);
+}
+.bank-card__input::-webkit-outer-spin-button,
+.bank-card__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bank-card__clear {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.bank-card__big {
+  margin: 0;
+  font-family: var(--ff-display);
+  font-size: clamp(34px, 4vw, 44px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  padding: 4px 0;
+  line-height: 1.05;
+}
+
+.bank-card__hint {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+}
+.bank-card--projection .bank-card__hint {
+  color: var(--body-muted);
+}
+
+/* Journey stepper */
+.journey {
+  list-style: none;
+  margin: var(--s-xl) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s-sm);
+}
+
+.journey-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-sm);
+  padding: var(--s-md);
+  border-radius: var(--r-md);
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease,
+    transform 120ms ease;
+  outline: none;
+}
+.journey-step:hover {
+  border-color: rgba(0, 102, 204, 0.3);
+  background: var(--canvas);
+}
+.journey-step:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+.journey-step:active {
+  transform: scale(0.99);
+}
+
+.journey-step__num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hairline);
+  color: var(--ink-muted-48);
+  font-family: var(--ff-text);
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.journey-step.is-done .journey-step__num {
+  background: var(--accent-investment);
+  color: #fff;
+}
+.journey-step.is-partial .journey-step__num {
+  background: var(--accent-other);
+  color: #fff;
+}
+.journey-step.is-skip .journey-step__num {
+  background: transparent;
+  color: var(--ink-muted-48);
+  border: 1.5px dashed var(--hairline);
+}
+.journey-step.is-pending .journey-step__num {
+  background: var(--canvas);
+  color: var(--ink-muted-48);
+  border: 1.5px solid var(--hairline);
+}
+
+.journey-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.journey-step__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink);
+}
+.journey-step.is-skip .journey-step__title {
+  color: var(--ink-muted-48);
+}
+.journey-step__detail {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
    Cards grid (card balances)
    ============================================================ */
 .cards-grid {

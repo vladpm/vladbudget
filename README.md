@@ -6,6 +6,8 @@ A quiet, Apple-inspired monthly budgeting app. Log income, set outgoings, invest
 
 ## Features
 
+- **Monthly checkup journey** — a guided 6-step pass through your month: set opening bank balance → confirm income → review outgoings → fund future you (savings/investments) → update card balances → see where you'll land. Each step is a clickable card with live status.
+- **Bank balance with carry-over** — type your current balance once and the app projects it forward through every month using your logged income/outgoings/savings, so future months show a realistic projected end-of-month balance automatically.
 - **Add, edit and delete monthly entries** against custom categories.
 - **Recurring entries** — toggle the "Recurring" checkbox directly in the entries table to make any line repeat every month, or use the dialog to set a specific **end month** (e.g. a 12-month gym membership). Past months keep their copy when you stop a recurring entry.
 - **Categories** grouped by type: **Income**, **Set outgoings**, **Investments**, **Savings**, **Other**. Rename, retype or delete any.

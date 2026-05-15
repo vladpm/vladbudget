@@ -9,13 +9,14 @@
   // Storage
   // -----------------------------------------------------------
   const STORAGE_KEY = "vladbudget.v1";
-  const SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 5;
 
   /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'savings'|'other'}} Category */
   /** @typedef {{id:string,month:string,categoryId:string,amount:number,note:string,recurring?:boolean,endMonth?:string|null}} Entry */
   /** @typedef {{id:string,name:string}} Card */
   /** @typedef {{cardId:string,month:string,amount:number}} CardBalance */
-  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[]}} Store */
+  /** @typedef {{month:string,amount:number}} BankBalance */
+  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[],bankBalances:BankBalance[]}} Store */
 
   const DEFAULT_CATEGORIES = [
     { name: "Salary", type: "income" },
@@ -82,6 +83,10 @@
       s.cardBalances = [];
       changed = true;
     }
+    if (!Array.isArray(s.bankBalances)) {
+      s.bankBalances = [];
+      changed = true;
+    }
     // v2 → v3: collapse per-entry `date` to `month` (YYYY-MM)
     for (const e of s.entries) {
       if (e.month) continue;
@@ -126,6 +131,7 @@
       entries: [],
       cards,
       cardBalances: [],
+      bankBalances: [],
     };
     saveStore(store);
     return store;
@@ -453,6 +459,14 @@
     nextMonth: $("#nextMonthBtn"),
     navMonthLabel: $("#navMonthLabel"),
     heroMonthLabel: $("#heroMonthLabel"),
+    checkupMonthLabel: $("#checkupMonthLabel"),
+
+    bankOpeningInput: $("#bankOpeningInput"),
+    bankOpeningClear: $("#bankOpeningClear"),
+    bankOpeningHint: $("#bankOpeningHint"),
+    bankProjectionValue: $("#bankProjectionValue"),
+    bankProjectionHint: $("#bankProjectionHint"),
+    journey: $("#journey"),
 
     kpiIncome: $("#kpiIncome"),
     kpiOutgoings: $("#kpiOutgoings"),
@@ -675,6 +689,61 @@
     return t.income - t.outgoing - t.investment - t.savings - t.other - cards;
   }
 
+  // -----------------------------------------------------------
+  // Bank balance & projection
+  // -----------------------------------------------------------
+  function netCashFlowForMonth(monthKey) {
+    const t = totalsForMonth(monthKey);
+    return t.income - t.outgoing - t.investment - t.savings - t.other;
+  }
+
+  function storedBank(monthKey) {
+    return store.bankBalances.find((b) => b.month === monthKey) || null;
+  }
+
+  /**
+   * Opening bank balance for a month.
+   *   - source 'manual'    → user typed it for this month
+   *   - source 'carryover' → projected from the most recent earlier stored balance
+   *   - source 'empty'     → nothing to anchor on yet
+   */
+  function openingBalanceForMonth(monthKey) {
+    const own = storedBank(monthKey);
+    if (own) return { amount: own.amount, source: "manual", anchor: monthKey };
+
+    let cursor = monthKey;
+    for (let i = 0; i < 36; i++) {
+      cursor = shiftMonth(cursor, -1);
+      const anchor = storedBank(cursor);
+      if (anchor) {
+        let amount = anchor.amount;
+        let m = cursor;
+        // Walk forward from the anchor month, accumulating each month's net cash flow.
+        while (m !== monthKey) {
+          amount += netCashFlowForMonth(m);
+          m = shiftMonth(m, +1);
+        }
+        return { amount, source: "carryover", anchor: cursor };
+      }
+    }
+    return { amount: 0, source: "empty", anchor: null };
+  }
+
+  function projectedClosingForMonth(monthKey) {
+    return openingBalanceForMonth(monthKey).amount + netCashFlowForMonth(monthKey);
+  }
+
+  function setBankBalance(monthKey, amount) {
+    const i = store.bankBalances.findIndex((b) => b.month === monthKey);
+    if (amount == null || Number.isNaN(amount)) {
+      if (i >= 0) store.bankBalances.splice(i, 1);
+    } else if (i >= 0) {
+      store.bankBalances[i].amount = amount;
+    } else {
+      store.bankBalances.push({ month: monthKey, amount });
+    }
+  }
+
   function trailingMonths(n) {
     const out = [];
     let key = selectedMonth;
@@ -690,6 +759,7 @@
   // -----------------------------------------------------------
   function render() {
     renderMonthLabels();
+    renderCheckup();
     renderKPIs();
     renderCards();
     renderBreakdown();
@@ -703,7 +773,179 @@
     const long = formatMonthLong(selectedMonth);
     els.navMonthLabel.textContent = long;
     els.heroMonthLabel.textContent = long;
+    if (els.checkupMonthLabel) els.checkupMonthLabel.textContent = long;
     if (els.cardsMonthLabel) els.cardsMonthLabel.textContent = long;
+  }
+
+  // -----------------------------------------------------------
+  // Monthly checkup (bank balance + journey)
+  // -----------------------------------------------------------
+  function renderCheckup() {
+    if (!els.bankOpeningInput) return;
+    const opening = openingBalanceForMonth(selectedMonth);
+    const projected = projectedClosingForMonth(selectedMonth);
+    const own = storedBank(selectedMonth);
+
+    // Don't clobber the user's typing while the field is focused.
+    if (document.activeElement !== els.bankOpeningInput) {
+      els.bankOpeningInput.value =
+        opening.source === "empty" ? "" : String(round2(opening.amount));
+      els.bankOpeningInput.dataset.source = opening.source;
+    }
+    els.bankOpeningClear.hidden = !own;
+
+    if (opening.source === "manual") {
+      els.bankOpeningHint.textContent = `Confirmed for ${formatMonthLong(selectedMonth)}.`;
+    } else if (opening.source === "carryover" && opening.anchor) {
+      els.bankOpeningHint.textContent = `Projected from ${formatMonthLong(opening.anchor)} — type to override.`;
+    } else {
+      els.bankOpeningHint.textContent = "Set what's actually in your bank at the start of the month.";
+    }
+
+    els.bankProjectionValue.textContent = fmtGBP.format(projected);
+    const flow = netCashFlowForMonth(selectedMonth);
+    if (flow === 0 && opening.source === "empty") {
+      els.bankProjectionHint.textContent = "Set an opening balance and log entries to see your projection.";
+    } else if (flow >= 0) {
+      els.bankProjectionHint.textContent = `${fmtGBP.format(flow)} added across the month.`;
+    } else {
+      els.bankProjectionHint.textContent = `${fmtGBP.format(Math.abs(flow))} drawn down across the month.`;
+    }
+
+    renderJourney();
+  }
+
+  function renderJourney() {
+    if (!els.journey) return;
+    const t = totalsForMonth(selectedMonth);
+    const opening = openingBalanceForMonth(selectedMonth);
+    const projected = projectedClosingForMonth(selectedMonth);
+    const cardsCount = store.cards.length;
+    const cardEntries = store.cardBalances.filter((b) => b.month === selectedMonth).length;
+    const futureFunded = t.investment + t.savings;
+
+    /** @type {{n:number,title:string,detail:string,status:'done'|'partial'|'pending'|'skip',target:string}[]} */
+    const steps = [
+      {
+        n: 1,
+        title: "Set opening balance",
+        detail:
+          opening.source === "manual"
+            ? `${fmtGBP.format(opening.amount)} confirmed`
+            : opening.source === "carryover"
+              ? `${fmtGBP.format(opening.amount)} carrying from ${formatMonthLong(opening.anchor)}`
+              : "Tell us what's in your bank",
+        status: opening.source === "manual" ? "done" : opening.source === "carryover" ? "partial" : "pending",
+        target: "bank",
+      },
+      {
+        n: 2,
+        title: "Log income",
+        detail: t.income > 0 ? `${fmtGBP.format(t.income)} in` : "Add what came in",
+        status: t.income > 0 ? "done" : "pending",
+        target: "add-entry",
+      },
+      {
+        n: 3,
+        title: "Track outgoings",
+        detail: t.outgoing > 0 ? `${fmtGBP.format(t.outgoing)} out` : "Log your spending",
+        status: t.outgoing > 0 ? "done" : "pending",
+        target: "add-entry",
+      },
+      {
+        n: 4,
+        title: "Fund future you",
+        detail:
+          futureFunded > 0
+            ? `${fmtGBP.format(futureFunded)} set aside`
+            : "Investments & savings",
+        status: futureFunded > 0 ? "done" : "pending",
+        target: "add-entry",
+      },
+      {
+        n: 5,
+        title: "Update card balances",
+        detail:
+          cardsCount === 0
+            ? "No cards added"
+            : `${cardEntries}/${cardsCount} updated`,
+        status:
+          cardsCount === 0
+            ? "skip"
+            : cardEntries === cardsCount
+              ? "done"
+              : cardEntries > 0
+                ? "partial"
+                : "pending",
+        target: "cards",
+      },
+    ];
+
+    const allDone = steps.every((s) => s.status === "done" || s.status === "skip");
+    const finalStep = {
+      n: 6,
+      title: allDone ? "All caught up" : "You'll land at",
+      detail: `${fmtGBP.format(projected)} projected`,
+      status: allDone ? "done" : "pending",
+      target: "projection",
+    };
+    steps.push(finalStep);
+
+    els.journey.innerHTML = steps
+      .map((s) => `
+        <li class="journey-step is-${s.status}" data-step="${s.n}" data-target="${s.target}" tabindex="0" role="button" aria-label="${escapeHtml(s.title)} — ${escapeHtml(s.detail)}">
+          <span class="journey-step__num" aria-hidden="true">${s.status === "done" ? "✓" : s.status === "skip" ? "—" : s.n}</span>
+          <div class="journey-step__body">
+            <p class="journey-step__title">${escapeHtml(s.title)}</p>
+            <p class="journey-step__detail">${escapeHtml(s.detail)}</p>
+          </div>
+        </li>
+      `)
+      .join("");
+  }
+
+  function handleJourneyClick(target) {
+    if (target === "bank") {
+      els.bankOpeningInput.focus();
+      els.bankOpeningInput.select();
+    } else if (target === "add-entry") {
+      openEntryDialog();
+    } else if (target === "cards") {
+      document.getElementById("cards").scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (target === "projection") {
+      els.bankProjectionValue.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function commitBankOpeningInput() {
+    const raw = (els.bankOpeningInput.value || "").trim();
+    if (raw === "") {
+      // Empty input on a month that previously had a stored value should clear it.
+      const own = storedBank(selectedMonth);
+      if (own) {
+        setBankBalance(selectedMonth, null);
+        saveStore(store);
+        renderCheckup();
+        renderKPIs();
+        renderTrendChart();
+      }
+      return;
+    }
+    const amount = parseFloat(raw);
+    if (!Number.isFinite(amount)) {
+      toast("Please enter a valid amount.");
+      renderCheckup();
+      return;
+    }
+    setBankBalance(selectedMonth, round2(amount));
+    saveStore(store);
+    renderCheckup();
+    renderKPIs();
+    renderTrendChart();
   }
 
   function renderKPIs() {
@@ -1265,6 +1507,43 @@
       saveCardFromForm();
     });
 
+    // Bank balance input
+    if (els.bankOpeningInput) {
+      els.bankOpeningInput.addEventListener("change", commitBankOpeningInput);
+      els.bankOpeningInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          els.bankOpeningInput.blur();
+        }
+      });
+    }
+    if (els.bankOpeningClear) {
+      els.bankOpeningClear.addEventListener("click", () => {
+        setBankBalance(selectedMonth, null);
+        saveStore(store);
+        renderCheckup();
+        renderKPIs();
+        renderTrendChart();
+        toast("Reverted to carry-over");
+      });
+    }
+
+    // Journey clicks (delegation)
+    if (els.journey) {
+      els.journey.addEventListener("click", (e) => {
+        const step = e.target.closest("[data-target]");
+        if (!step) return;
+        handleJourneyClick(step.dataset.target);
+      });
+      els.journey.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const step = e.target.closest("[data-target]");
+        if (!step) return;
+        e.preventDefault();
+        handleJourneyClick(step.dataset.target);
+      });
+    }
+
     els.exportBtn.addEventListener("click", exportData);
     els.importBtn.addEventListener("click", () => els.importFile.click());
     els.importFile.addEventListener("change", importData);
@@ -1684,6 +1963,7 @@
           entries: importedEntries,
           cards: Array.isArray(parsed.cards) ? parsed.cards : [],
           cardBalances: Array.isArray(parsed.cardBalances) ? parsed.cardBalances : [],
+          bankBalances: Array.isArray(parsed.bankBalances) ? parsed.bankBalances : [],
         };
         saveStore(store);
         render();
@@ -1698,7 +1978,7 @@
   }
 
   function resetData() {
-    if (!confirm("Reset everything? All categories, cards, entries and balances will be deleted.")) return;
+    if (!confirm("Reset everything? All categories, cards, entries, balances and bank values will be deleted.")) return;
     if (!confirm("Are you absolutely sure? This cannot be undone.")) return;
     localStorage.removeItem(STORAGE_KEY);
     store = loadStore();

@@ -30,6 +30,7 @@
           <span>Budget</span>
         </a>
         <nav class="global-nav__links" aria-label="Primary">
+          <a href="#checkup">Checkup</a>
           <a href="#dashboard">Dashboard</a>
           <a href="#cards">Cards</a>
           <a href="#log">Log</a>
@@ -101,15 +102,63 @@
     </div>
 
     <main id="main">
-      <!-- Hero / month summary tile -->
-      <section class="tile tile--light" id="dashboard" aria-labelledby="heroTitle">
+      <!-- Monthly checkup hero -->
+      <section class="tile tile--light" id="checkup" aria-labelledby="checkupTitle">
+        <div class="tile__inner">
+          <p class="eyebrow" id="checkupMonthLabel">Loading…</p>
+          <h1 class="display-hero" id="checkupTitle">Where you stand.</h1>
+          <p class="lead">
+            A quick monthly checkup. Set what's in the bank, run through what came
+            in and what went out, and see what you'll have left at the end.
+          </p>
+
+          <div class="bank-row">
+            <article class="bank-card">
+              <p class="bank-card__label">Opening bank balance</p>
+              <div class="bank-card__amount-row">
+                <span class="bank-card__currency">£</span>
+                <input
+                  type="number"
+                  id="bankOpeningInput"
+                  class="bank-card__input"
+                  inputmode="decimal"
+                  step="0.01"
+                  placeholder="0.00"
+                  aria-label="Opening bank balance"
+                />
+                <button
+                  type="button"
+                  class="icon-btn bank-card__clear"
+                  id="bankOpeningClear"
+                  aria-label="Clear stored opening balance"
+                  title="Clear stored value (revert to carry-over)"
+                  hidden
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m6 6 12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+              <p class="bank-card__hint" id="bankOpeningHint">Set what's actually in your bank at the start of the month.</p>
+            </article>
+            <article class="bank-card bank-card--projection">
+              <p class="bank-card__label">Projected end of month</p>
+              <p class="bank-card__big" id="bankProjectionValue">£0</p>
+              <p class="bank-card__hint" id="bankProjectionHint">After income, outgoings, investments &amp; savings.</p>
+            </article>
+          </div>
+
+          <ol class="journey" id="journey" aria-label="Monthly checkup journey">
+            <!-- populated by app.js -->
+          </ol>
+        </div>
+      </section>
+
+      <!-- Dashboard KPIs (demoted to supporting tile) -->
+      <section class="tile tile--parchment" id="dashboard" aria-labelledby="heroTitle">
         <div class="tile__inner">
           <p class="eyebrow" id="heroMonthLabel">Loading…</p>
-          <h1 class="display-hero" id="heroTitle">Your month, in focus.</h1>
-          <p class="lead">
-            Quietly log what comes in and what goes out. Watch the months
-            settle into a rhythm.
-          </p>
+          <h2 class="display-lg" id="heroTitle">The numbers, at a glance.</h2>
 
           <div class="kpi-grid" role="list">
             <article class="kpi" role="listitem">
@@ -147,7 +196,7 @@
       </section>
 
       <!-- Card balances tile -->
-      <section class="tile tile--parchment" id="cards" aria-labelledby="cardsTitle">
+      <section class="tile tile--light" id="cards" aria-labelledby="cardsTitle">
         <div class="tile__inner">
           <p class="eyebrow">Card balances</p>
           <h2 class="display-lg" id="cardsTitle">What you owe this month.</h2>
