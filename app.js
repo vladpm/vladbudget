@@ -47,14 +47,14 @@
   };
 
   const TYPE_COLOR = {
-    income: "#30d158",
-    outgoing: "#ff453a",
-    investment: "#0066cc",
-    savings: "#5e5ce6",
-    other: "#ff9f0a",
+    income: "#1d8e6e",
+    outgoing: "#ea2261",
+    investment: "#00a4a6",
+    savings: "#ed8e3a",
+    other: "#64748d",
   };
 
-  const CARDS_COLOR = "#bf5af2";
+  const CARDS_COLOR = "#f96bee";
 
   /** @returns {Store} */
   function loadStore() {
@@ -1273,8 +1273,8 @@
           type: "bar",
           label: "Income",
           data: incomeData,
-          backgroundColor: "rgba(0, 102, 204, 0.85)",
-          borderRadius: 6,
+          backgroundColor: "rgba(83, 58, 253, 0.9)",
+          borderRadius: 4,
           stack: "flow-pos",
           order: 2,
         },
@@ -1282,8 +1282,8 @@
           type: "bar",
           label: "Outgoings",
           data: outgoingData.map((v) => -v),
-          backgroundColor: "rgba(255, 69, 58, 0.85)",
-          borderRadius: 6,
+          backgroundColor: "rgba(234, 34, 97, 0.9)",
+          borderRadius: 4,
           stack: "flow-neg",
           order: 2,
         },
@@ -1291,8 +1291,8 @@
           type: "bar",
           label: "Investments",
           data: investmentData.map((v) => -v),
-          backgroundColor: "rgba(48, 209, 88, 0.75)",
-          borderRadius: 6,
+          backgroundColor: "rgba(0, 164, 166, 0.85)",
+          borderRadius: 4,
           stack: "flow-neg",
           order: 2,
         },
@@ -1300,8 +1300,8 @@
           type: "bar",
           label: "Savings",
           data: savingsData.map((v) => -v),
-          backgroundColor: "rgba(94, 92, 230, 0.85)",
-          borderRadius: 6,
+          backgroundColor: "rgba(237, 142, 58, 0.9)",
+          borderRadius: 4,
           stack: "flow-neg",
           order: 2,
         },
@@ -1309,8 +1309,8 @@
           type: "bar",
           label: "Card balances",
           data: cardsData.map((v) => -v),
-          backgroundColor: "rgba(191, 90, 242, 0.8)",
-          borderRadius: 6,
+          backgroundColor: "rgba(249, 107, 238, 0.85)",
+          borderRadius: 4,
           stack: "flow-neg",
           order: 2,
         },
@@ -1318,12 +1318,12 @@
           type: "line",
           label: "Leftover",
           data: netData,
-          borderColor: "#2997ff",
-          backgroundColor: "rgba(41, 151, 255, 0.12)",
+          borderColor: "#b9b9f9",
+          backgroundColor: "rgba(185, 185, 249, 0.12)",
           borderWidth: 2.5,
           tension: 0.32,
           pointRadius: 3,
-          pointBackgroundColor: "#2997ff",
+          pointBackgroundColor: "#b9b9f9",
           fill: false,
           order: 1,
         },
@@ -1337,12 +1337,14 @@
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(29,29,31,0.95)",
+          backgroundColor: "rgba(28, 30, 84, 0.96)",
           titleColor: "#fff",
           bodyColor: "#fff",
           borderColor: "rgba(255,255,255,0.08)",
           borderWidth: 1,
           padding: 12,
+          titleFont: { weight: "400", size: 13 },
+          bodyFont: { weight: "300", size: 13 },
           callbacks: {
             label: (ctx) => {
               const raw = ctx.raw;
