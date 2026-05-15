@@ -1618,6 +1618,13 @@ a:hover {
   font-size: 14px;
   letter-spacing: 0;
 }
+.auth-back {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--primary);
+  letter-spacing: -0.36px;
+}
 .auth-status {
   margin: var(--s-sm) 0 0;
   font-size: 13px;

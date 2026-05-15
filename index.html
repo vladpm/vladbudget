@@ -498,8 +498,9 @@
         </header>
         <div class="dialog__body">
           <p class="auth-lead">
-            Enter your email and we'll send a one-tap magic link. Open it on
-            your phone or another device to access the same budget.
+            Enter your email and we'll send you a 6-digit code. Type it in here
+            and you'll be signed in — no clicking links or jumping between
+            apps. Use the same email on your phone to get the same data.
           </p>
           <div class="field">
             <label for="authEmail">Email</label>
@@ -512,11 +513,24 @@
               placeholder="you@example.com"
             />
           </div>
+          <div class="field" id="authCodeField" hidden>
+            <label for="authCode">6-digit code</label>
+            <input
+              type="text"
+              id="authCode"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              placeholder="123456"
+            />
+            <a href="#" id="authBackLink" class="auth-back" hidden>Use a different email</a>
+          </div>
           <p class="auth-status" id="authStatus" hidden></p>
         </div>
         <footer class="dialog__foot">
           <button type="submit" class="btn-primary" id="authSendBtn">
-            Send magic link
+            Send code
           </button>
         </footer>
       </form>

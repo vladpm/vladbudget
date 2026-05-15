@@ -325,13 +325,20 @@
     return session;
   }
 
-  async function signInWithMagicLink(email) {
+  let pendingOtpEmail = null;
+
+  async function sendOtpEmail(email) {
     if (!CLOUD_ENABLED) return { error: new Error("Cloud sync not configured") };
-    const redirectTo = window.location.origin + window.location.pathname;
+    // No emailRedirectTo → Supabase sends a 6-digit code instead of a magic link.
     return supa.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: redirectTo },
+      options: { shouldCreateUser: true },
     });
+  }
+
+  async function verifyOtpCode(email, token) {
+    if (!CLOUD_ENABLED) return { error: new Error("Cloud sync not configured") };
+    return supa.auth.verifyOtp({ email, token, type: "email" });
   }
 
   async function signOut() {
@@ -380,21 +387,68 @@
   }
 
   async function handleAuthFormSubmit() {
-    const email = (els.authEmail.value || "").trim();
-    if (!email) return;
+    const codeMode = !!els.authCodeField && !els.authCodeField.hidden;
+
+    if (!codeMode) {
+      const email = (els.authEmail.value || "").trim();
+      if (!email) return;
+      els.authSendBtn.disabled = true;
+      els.authStatus.hidden = false;
+      els.authStatus.dataset.state = "info";
+      els.authStatus.textContent = "Sending code…";
+      const { error } = await sendOtpEmail(email);
+      els.authSendBtn.disabled = false;
+      if (error) {
+        els.authStatus.dataset.state = "error";
+        els.authStatus.textContent = error.message || "Couldn’t send code.";
+        return;
+      }
+      pendingOtpEmail = email;
+      els.authEmail.disabled = true;
+      els.authCodeField.hidden = false;
+      els.authBackLink.hidden = false;
+      els.authSendBtn.textContent = "Verify code";
+      els.authStatus.dataset.state = "ok";
+      els.authStatus.textContent = `We sent a 6-digit code to ${email}. Check your inbox (and spam) and type it below.`;
+      setTimeout(() => els.authCode.focus(), 50);
+      return;
+    }
+
+    // Code-entry mode
+    const code = (els.authCode.value || "").trim();
+    if (!code || !pendingOtpEmail) return;
     els.authSendBtn.disabled = true;
-    els.authStatus.hidden = false;
     els.authStatus.dataset.state = "info";
-    els.authStatus.textContent = "Sending magic link…";
-    const { error } = await signInWithMagicLink(email);
+    els.authStatus.textContent = "Checking code…";
+    const { error } = await verifyOtpCode(pendingOtpEmail, code);
     els.authSendBtn.disabled = false;
     if (error) {
       els.authStatus.dataset.state = "error";
-      els.authStatus.textContent = error.message || "Couldn’t send magic link.";
+      els.authStatus.textContent = error.message || "That code didn’t work. Try again or request a new one.";
       return;
     }
     els.authStatus.dataset.state = "ok";
-    els.authStatus.textContent = `Check ${email} for a link. Open it on whichever device you want to use.`;
+    els.authStatus.textContent = "Signed in.";
+    // onAuthStateChange will handle the dialog close and pull.
+  }
+
+  function resetAuthForm() {
+    pendingOtpEmail = null;
+    if (els.authEmail) {
+      els.authEmail.disabled = false;
+      els.authEmail.value = "";
+    }
+    if (els.authCode) els.authCode.value = "";
+    if (els.authCodeField) els.authCodeField.hidden = true;
+    if (els.authBackLink) els.authBackLink.hidden = true;
+    if (els.authSendBtn) {
+      els.authSendBtn.textContent = "Send code";
+      els.authSendBtn.disabled = false;
+    }
+    if (els.authStatus) {
+      els.authStatus.hidden = true;
+      els.authStatus.textContent = "";
+    }
   }
 
   async function initCloud() {
@@ -411,6 +465,7 @@
       session = sess || null;
       if (session && !wasSignedIn) {
         closeAuthDialog();
+        resetAuthForm();
         if (els.signOutBtn) els.signOutBtn.hidden = false;
         updateSyncHint();
         await pullFromCloud();
@@ -541,6 +596,9 @@
     authDialog: $("#authDialog"),
     authForm: $("#authForm"),
     authEmail: $("#authEmail"),
+    authCode: $("#authCode"),
+    authCodeField: $("#authCodeField"),
+    authBackLink: $("#authBackLink"),
     authStatus: $("#authStatus"),
     authSendBtn: $("#authSendBtn"),
 
@@ -1560,6 +1618,13 @@
       els.authForm.addEventListener("submit", (e) => {
         e.preventDefault();
         handleAuthFormSubmit();
+      });
+    }
+    if (els.authBackLink) {
+      els.authBackLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        resetAuthForm();
+        if (els.authEmail) els.authEmail.focus();
       });
     }
 
