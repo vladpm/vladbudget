@@ -134,12 +134,303 @@
   /** @param {Store} store */
   function saveStore(store) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    queueCloudPush();
   }
 
   function uid() {
     return (
       Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
     );
+  }
+
+  // -----------------------------------------------------------
+  // Cloud sync (Supabase)
+  // -----------------------------------------------------------
+  const cfg = (typeof window !== "undefined" && window.BUDGET_CONFIG) || {};
+  const CLOUD_ENABLED = !!(
+    cfg.supabaseUrl &&
+    cfg.supabaseAnonKey &&
+    typeof window.supabase !== "undefined"
+  );
+  /** @type {ReturnType<typeof window.supabase.createClient>|null} */
+  let supa = null;
+  /** @type {{user:{id:string,email?:string}}|null} */
+  let session = null;
+  let cloudPushTimer = null;
+  let cloudPushInFlight = false;
+  let cloudPushDirty = false;
+  let lastCloudUpdatedAt = null;
+  let realtimeChannel = null;
+
+  if (CLOUD_ENABLED) {
+    supa = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+  }
+
+  function setSyncStatus(state, label, title) {
+    const el = els && els.syncStatus;
+    if (!el) return;
+    if (!CLOUD_ENABLED) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = !label;
+    el.dataset.state = state;
+    el.textContent = label || "";
+    if (title) el.title = title;
+  }
+
+  function queueCloudPush() {
+    if (!CLOUD_ENABLED || !session) return;
+    cloudPushDirty = true;
+    if (cloudPushTimer) clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(flushCloudPush, 800);
+    setSyncStatus("pending", "Saving…");
+  }
+
+  async function flushCloudPush() {
+    if (!CLOUD_ENABLED || !session || !cloudPushDirty) return;
+    if (cloudPushInFlight) {
+      cloudPushTimer = setTimeout(flushCloudPush, 400);
+      return;
+    }
+    cloudPushInFlight = true;
+    cloudPushDirty = false;
+    setSyncStatus("pending", "Saving…");
+    try {
+      const { data, error } = await supa
+        .from("budgets")
+        .upsert(
+          { user_id: session.user.id, data: store },
+          { onConflict: "user_id" }
+        )
+        .select("updated_at")
+        .single();
+      if (error) throw error;
+      lastCloudUpdatedAt = data && data.updated_at;
+      setSyncStatus(
+        "ok",
+        "Synced",
+        `Synced · ${session.user.email || "signed in"}`
+      );
+    } catch (err) {
+      console.error("[budget] cloud push failed", err);
+      cloudPushDirty = true;
+      setSyncStatus(
+        "error",
+        "Offline",
+        "Couldn’t reach the cloud. Will retry on next change."
+      );
+    } finally {
+      cloudPushInFlight = false;
+    }
+  }
+
+  async function pullFromCloud(opts) {
+    if (!CLOUD_ENABLED || !session) return;
+    const force = opts && opts.force;
+    setSyncStatus("pending", "Loading…");
+    try {
+      const { data, error } = await supa
+        .from("budgets")
+        .select("data, updated_at")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        // No row yet — push current local store as initial cloud copy.
+        cloudPushDirty = true;
+        await flushCloudPush();
+        setSyncStatus("ok", "Synced");
+        return;
+      }
+      const remote = data.data || {};
+      const remoteHasContent =
+        (Array.isArray(remote.entries) && remote.entries.length > 0) ||
+        (Array.isArray(remote.cards) && remote.cards.length > 0) ||
+        (Array.isArray(remote.cardBalances) && remote.cardBalances.length > 0);
+      const localIsEmpty =
+        store.entries.length === 0 && store.cardBalances.length === 0;
+
+      if (force || remoteHasContent || localIsEmpty) {
+        store = migrate(remote);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        render();
+      } else {
+        // Local has content but remote is empty — push local up.
+        cloudPushDirty = true;
+        await flushCloudPush();
+      }
+      lastCloudUpdatedAt = data.updated_at;
+      setSyncStatus(
+        "ok",
+        "Synced",
+        `Synced · ${session.user.email || "signed in"}`
+      );
+    } catch (err) {
+      console.error("[budget] cloud pull failed", err);
+      setSyncStatus("error", "Offline", "Working from local copy.");
+    }
+  }
+
+  function subscribeRealtime() {
+    if (!CLOUD_ENABLED || !session || realtimeChannel) return;
+    try {
+      realtimeChannel = supa
+        .channel("budget-" + session.user.id)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "budgets",
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            const newUpdatedAt =
+              payload && payload.new && payload.new.updated_at;
+            if (newUpdatedAt && newUpdatedAt === lastCloudUpdatedAt) return;
+            if (cloudPushInFlight || cloudPushDirty) return;
+            pullFromCloud({ force: true });
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[budget] realtime subscribe failed", err);
+    }
+  }
+
+  function unsubscribeRealtime() {
+    if (realtimeChannel && supa) {
+      supa.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  }
+
+  async function ensureSession() {
+    if (!CLOUD_ENABLED) return null;
+    const { data } = await supa.auth.getSession();
+    session = data && data.session ? data.session : null;
+    return session;
+  }
+
+  async function signInWithMagicLink(email) {
+    if (!CLOUD_ENABLED) return { error: new Error("Cloud sync not configured") };
+    const redirectTo = window.location.origin + window.location.pathname;
+    return supa.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+  }
+
+  async function signOut() {
+    if (!CLOUD_ENABLED) return;
+    unsubscribeRealtime();
+    await flushCloudPush();
+    await supa.auth.signOut();
+    session = null;
+    setSyncStatus("off", "Sign in");
+    if (els.signOutBtn) els.signOutBtn.hidden = true;
+    updateSyncHint();
+    openAuthDialog("You're signed out. Sign in to keep syncing across devices.");
+  }
+
+  function updateSyncHint() {
+    if (!els.syncHint) return;
+    if (!CLOUD_ENABLED) {
+      els.syncHint.textContent =
+        "Cloud sync isn’t configured — your data lives in this browser only. See the README to enable cross-device sync.";
+      return;
+    }
+    if (session) {
+      els.syncHint.textContent = `Signed in as ${session.user.email || "—"} · changes auto-sync across your devices.`;
+    } else {
+      els.syncHint.textContent =
+        "Cloud sync is configured but you're signed out. Local changes won’t sync until you sign in.";
+    }
+  }
+
+  function openAuthDialog(message) {
+    if (!els.authDialog) return;
+    if (message && els.authStatus) {
+      els.authStatus.textContent = message;
+      els.authStatus.hidden = false;
+      els.authStatus.dataset.state = "info";
+    }
+    if (typeof els.authDialog.showModal === "function") {
+      els.authDialog.showModal();
+    } else {
+      els.authDialog.setAttribute("open", "");
+    }
+  }
+
+  function closeAuthDialog() {
+    closeDialog(els.authDialog);
+  }
+
+  async function handleAuthFormSubmit() {
+    const email = (els.authEmail.value || "").trim();
+    if (!email) return;
+    els.authSendBtn.disabled = true;
+    els.authStatus.hidden = false;
+    els.authStatus.dataset.state = "info";
+    els.authStatus.textContent = "Sending magic link…";
+    const { error } = await signInWithMagicLink(email);
+    els.authSendBtn.disabled = false;
+    if (error) {
+      els.authStatus.dataset.state = "error";
+      els.authStatus.textContent = error.message || "Couldn’t send magic link.";
+      return;
+    }
+    els.authStatus.dataset.state = "ok";
+    els.authStatus.textContent = `Check ${email} for a link. Open it on whichever device you want to use.`;
+  }
+
+  async function initCloud() {
+    if (!CLOUD_ENABLED) {
+      setSyncStatus("off", "");
+      updateSyncHint();
+      return;
+    }
+    setSyncStatus("pending", "Connecting…");
+
+    // Listen for auth state changes (handles magic link landing back here).
+    supa.auth.onAuthStateChange(async (_event, sess) => {
+      const wasSignedIn = !!session;
+      session = sess || null;
+      if (session && !wasSignedIn) {
+        closeAuthDialog();
+        if (els.signOutBtn) els.signOutBtn.hidden = false;
+        updateSyncHint();
+        await pullFromCloud();
+        subscribeRealtime();
+      } else if (!session && wasSignedIn) {
+        unsubscribeRealtime();
+        if (els.signOutBtn) els.signOutBtn.hidden = true;
+        updateSyncHint();
+      }
+    });
+
+    await ensureSession();
+    if (!session) {
+      setSyncStatus("off", "Sign in");
+      updateSyncHint();
+      openAuthDialog();
+      return;
+    }
+    if (els.signOutBtn) els.signOutBtn.hidden = false;
+    updateSyncHint();
+    await pullFromCloud();
+    subscribeRealtime();
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") pullFromCloud();
+    });
   }
 
   // -----------------------------------------------------------
@@ -228,6 +519,16 @@
     cardEditForm: $("#cardEditForm"),
     editCardName: $("#editCardName"),
     editCardId: $("#editCardId"),
+
+    syncStatus: $("#syncStatus"),
+    syncHint: $("#syncHint"),
+    signOutBtn: $("#signOutBtn"),
+
+    authDialog: $("#authDialog"),
+    authForm: $("#authForm"),
+    authEmail: $("#authEmail"),
+    authStatus: $("#authStatus"),
+    authSendBtn: $("#authSendBtn"),
 
     toast: $("#toast"),
     footerYear: $("#footerYear"),
@@ -969,6 +1270,18 @@
     els.importFile.addEventListener("change", importData);
     els.resetBtn.addEventListener("click", resetData);
 
+    if (els.signOutBtn) {
+      els.signOutBtn.addEventListener("click", () => {
+        if (confirm("Sign out? Local data stays in this browser.")) signOut();
+      });
+    }
+    if (els.authForm) {
+      els.authForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        handleAuthFormSubmit();
+      });
+    }
+
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
       if (els.entryDialog.open) closeDialog(els.entryDialog);
@@ -1428,5 +1741,6 @@
   document.addEventListener("DOMContentLoaded", () => {
     wire();
     render();
+    initCloud();
   });
 })();

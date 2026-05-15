@@ -195,6 +195,42 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--body-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: default;
+  user-select: none;
+}
+.sync-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+.sync-pill[data-state="ok"] {
+  color: #30d158;
+}
+.sync-pill[data-state="pending"] {
+  color: #ff9f0a;
+}
+.sync-pill[data-state="error"] {
+  color: #ff6b6b;
+}
+.sync-pill[data-state="off"] {
+  color: var(--body-muted);
+}
+
 /* ============================================================
    Sub-nav (frosted)
    ============================================================ */
@@ -1059,6 +1095,43 @@ a:hover {
   flex-wrap: wrap;
   gap: var(--s-sm);
   margin-top: var(--s-md);
+}
+
+.data-hint {
+  margin: var(--s-md) 0 0;
+  color: var(--body-muted);
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  max-width: 720px;
+}
+
+.dialog--auth {
+  width: min(440px, 92vw);
+}
+.auth-lead {
+  margin: 0 0 var(--s-md);
+  color: var(--ink-muted-80);
+  font-size: 15px;
+  letter-spacing: -0.224px;
+}
+.auth-status {
+  margin: var(--s-sm) 0 0;
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+}
+.auth-status[data-state="info"] {
+  background: rgba(0, 102, 204, 0.08);
+  color: var(--primary);
+}
+.auth-status[data-state="ok"] {
+  background: rgba(48, 209, 88, 0.12);
+  color: #1f8f3a;
+}
+.auth-status[data-state="error"] {
+  background: rgba(215, 0, 21, 0.08);
+  color: #d70015;
 }
 
 /* ============================================================
