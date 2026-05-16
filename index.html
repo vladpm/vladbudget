@@ -33,6 +33,7 @@
           <a href="#checkup">Checkup</a>
           <a href="#dashboard">Dashboard</a>
           <a href="#cards">Cards</a>
+          <a href="#owed">Owed</a>
           <a href="#log">Log</a>
           <a href="#categories">Categories</a>
           <a href="#data">Data</a>
@@ -45,9 +46,9 @@
     </header>
 
     <!-- Sub-nav frosted -->
-    <div class="sub-nav" role="region" aria-label="Month selector">
+    <div class="sub-nav" role="region" aria-label="Pay-cycle selector">
       <div class="sub-nav__inner">
-        <span class="sub-nav__title">Monthly Budget</span>
+        <span class="sub-nav__title">Pay-cycle budget</span>
         <div class="sub-nav__controls">
           <button
             class="btn-icon"
@@ -186,6 +187,11 @@
               <p class="kpi__value" id="kpiCards">£0</p>
               <p class="kpi__hint" id="kpiCardsHint">No cards added</p>
             </article>
+            <article class="kpi" role="listitem">
+              <p class="kpi__label">Owed to you</p>
+              <p class="kpi__value" id="kpiOwed">£0</p>
+              <p class="kpi__hint" id="kpiOwedHint">Nothing expected this cycle</p>
+            </article>
             <article class="kpi kpi--accent" role="listitem">
               <p class="kpi__label">Leftover</p>
               <p class="kpi__value" id="kpiNet">£0</p>
@@ -222,6 +228,52 @@
               maxlength="40"
             />
             <button type="submit" class="btn-primary">Add card</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Money owed to you tile -->
+      <section class="tile tile--parchment" id="owed" aria-labelledby="owedTitle">
+        <div class="tile__inner">
+          <p class="eyebrow">Money owed to you</p>
+          <h2 class="display-lg" id="owedTitle">What you're expecting in.</h2>
+          <p class="lead">
+            Invoices, IOUs, expense claims — anything you're expecting to
+            land in your bank during the
+            <span id="owedMonthLabel">pay cycle</span>. Tick each one off as it
+            arrives. Pending and received both count toward your projected
+            leftover.
+          </p>
+
+          <ul class="rcv-list" id="receivablesList" aria-live="polite">
+            <!-- populated by app.js -->
+          </ul>
+
+          <form id="receivableForm" class="rcv-form" autocomplete="off">
+            <label class="visually-hidden" for="rcvName">From whom / what for</label>
+            <input
+              type="text"
+              id="rcvName"
+              class="text-input"
+              placeholder="From whom / what for"
+              required
+              maxlength="40"
+            />
+            <label class="visually-hidden" for="rcvAmount">Amount in pounds</label>
+            <div class="rcv-form__amount">
+              <span class="rcv-form__currency" aria-hidden="true">£</span>
+              <input
+                type="number"
+                id="rcvAmount"
+                class="text-input"
+                inputmode="decimal"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <button type="submit" class="btn-primary">Add</button>
           </form>
         </div>
       </section>

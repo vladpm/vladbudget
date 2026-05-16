@@ -963,6 +963,174 @@ a:hover {
 }
 
 /* ============================================================
+   Receivables (money owed to you)
+   ============================================================ */
+.rcv-list {
+  list-style: none;
+  margin: var(--s-xl) 0 var(--s-lg);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-sm);
+}
+
+.rcv {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: 14px var(--s-lg);
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--s-md);
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 160ms ease, opacity 160ms ease;
+}
+.rcv--done {
+  opacity: 0.6;
+}
+.rcv--done .rcv__name {
+  text-decoration: line-through;
+  color: var(--ink-mute);
+}
+
+.rcv__check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin: 0;
+}
+.rcv__check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.rcv__box {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid var(--hairline-input);
+  background: var(--canvas);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.rcv__check:hover .rcv__box {
+  border-color: var(--primary);
+}
+.rcv__check input:checked + .rcv__box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.rcv__check input:checked + .rcv__box::after {
+  content: "";
+  width: 11px;
+  height: 6px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.rcv__check input:focus-visible + .rcv__box {
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 2px;
+}
+
+.rcv__body {
+  min-width: 0;
+}
+.rcv__name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rcv__status {
+  margin: 2px 0 0;
+  font-size: 12px;
+  letter-spacing: -0.36px;
+  color: var(--ink-mute);
+  font-feature-settings: "ss01";
+}
+
+.rcv__amount {
+  font-family: var(--ff-display);
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: -0.4px;
+  color: var(--ink);
+  font-feature-settings: "ss01", "tnum";
+  white-space: nowrap;
+}
+
+.rcv__del {
+  flex-shrink: 0;
+}
+
+.rcv--empty {
+  background: transparent;
+  border: 1px dashed var(--hairline-input);
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+  color: var(--ink-mute);
+  box-shadow: none;
+}
+.rcv--empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.rcv-form {
+  display: grid;
+  grid-template-columns: 1fr 160px auto;
+  gap: var(--s-md);
+  margin-top: var(--s-md);
+  max-width: 720px;
+}
+
+.rcv-form__amount {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.rcv-form__currency {
+  position: absolute;
+  left: 12px;
+  font-family: var(--ff-display);
+  font-size: 15px;
+  color: var(--ink-mute);
+  pointer-events: none;
+}
+.rcv-form__amount .text-input {
+  padding-left: 26px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .rcv {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "check name amount"
+      "check status del";
+    row-gap: 4px;
+    column-gap: var(--s-sm);
+  }
+  .rcv__check { grid-area: check; align-self: start; margin-top: 2px; }
+  .rcv__body { grid-area: name; }
+  .rcv__amount { grid-area: amount; align-self: start; }
+  .rcv__del { grid-area: del; justify-self: end; }
+  .rcv-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
    Trend chart
    ============================================================ */
 .chart-wrap {

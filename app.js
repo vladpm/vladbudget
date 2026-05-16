@@ -9,14 +9,15 @@
   // Storage
   // -----------------------------------------------------------
   const STORAGE_KEY = "vladbudget.v1";
-  const SCHEMA_VERSION = 5;
+  const SCHEMA_VERSION = 6;
 
   /** @typedef {{id:string,name:string,type:'income'|'outgoing'|'investment'|'savings'|'other'}} Category */
   /** @typedef {{id:string,month:string,categoryId:string,amount:number,note:string,recurring?:boolean,endMonth?:string|null}} Entry */
   /** @typedef {{id:string,name:string}} Card */
   /** @typedef {{cardId:string,month:string,amount:number}} CardBalance */
   /** @typedef {{month:string,amount:number}} BankBalance */
-  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[],bankBalances:BankBalance[]}} Store */
+  /** @typedef {{id:string,month:string,name:string,amount:number,received:boolean}} Receivable */
+  /** @typedef {{schemaVersion:number,categories:Category[],entries:Entry[],cards:Card[],cardBalances:CardBalance[],bankBalances:BankBalance[],receivables:Receivable[]}} Store */
 
   const DEFAULT_CATEGORIES = [
     { name: "Salary", type: "income" },
@@ -87,6 +88,11 @@
       s.bankBalances = [];
       changed = true;
     }
+    // v5 → v6: receivables (money owed to you, expected in)
+    if (!Array.isArray(s.receivables)) {
+      s.receivables = [];
+      changed = true;
+    }
     // v2 → v3: collapse per-entry `date` to `month` (YYYY-MM)
     for (const e of s.entries) {
       if (e.month) continue;
@@ -132,6 +138,7 @@
       cards,
       cardBalances: [],
       bankBalances: [],
+      receivables: [],
     };
     saveStore(store);
     return store;
@@ -525,12 +532,14 @@
     kpiInvestments: $("#kpiInvestments"),
     kpiSavings: $("#kpiSavings"),
     kpiCards: $("#kpiCards"),
+    kpiOwed: $("#kpiOwed"),
     kpiNet: $("#kpiNet"),
     kpiIncomeHint: $("#kpiIncomeHint"),
     kpiOutgoingsHint: $("#kpiOutgoingsHint"),
     kpiInvestmentsHint: $("#kpiInvestmentsHint"),
     kpiSavingsHint: $("#kpiSavingsHint"),
     kpiCardsHint: $("#kpiCardsHint"),
+    kpiOwedHint: $("#kpiOwedHint"),
     kpiNetHint: $("#kpiNetHint"),
 
     breakdownGrid: $("#breakdownGrid"),
@@ -550,6 +559,12 @@
     cardsMonthLabel: $("#cardsMonthLabel"),
     cardForm: $("#cardForm"),
     cardName: $("#cardName"),
+
+    receivablesList: $("#receivablesList"),
+    receivableForm: $("#receivableForm"),
+    rcvName: $("#rcvName"),
+    rcvAmount: $("#rcvAmount"),
+    owedMonthLabel: $("#owedMonthLabel"),
 
     exportBtn: $("#exportBtn"),
     importBtn: $("#importBtn"),
@@ -627,6 +642,26 @@
       month: "long",
       year: "numeric",
     });
+  }
+  /**
+   * Pay-cycle label. The user thinks of "May 2026" as the cycle running from
+   * May's paycheck into June's, so we show "May → Jun 2026" (or with end-year
+   * if the cycle crosses a year boundary).
+   */
+  function formatMonthCycle(monthKey) {
+    const [y, m] = monthKey.split("-").map(Number);
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 1);
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const startLabel = start.toLocaleDateString(undefined, {
+      month: "long",
+      year: sameYear ? undefined : "numeric",
+    });
+    const endLabel = end.toLocaleDateString(undefined, {
+      month: "short",
+      year: "numeric",
+    });
+    return `${startLabel} → ${endLabel}`;
   }
   function formatMonthShort(monthKey) {
     const [y, m] = monthKey.split("-").map(Number);
@@ -741,7 +776,34 @@
   function leftoverForMonth(monthKey) {
     const t = totalsForMonth(monthKey);
     const cards = cardsTotalForMonth(monthKey);
-    return t.income - t.outgoing - t.investment - t.savings - t.other - cards;
+    const owed = receivablesTotalForMonth(monthKey);
+    return t.income + owed - t.outgoing - t.investment - t.savings - t.other - cards;
+  }
+
+  // -----------------------------------------------------------
+  // Receivables (money owed to you, expected this pay cycle)
+  // -----------------------------------------------------------
+  function receivablesForMonth(monthKey) {
+    return store.receivables
+      .filter((r) => r.month === monthKey)
+      .sort((a, b) => {
+        if (a.received !== b.received) return a.received ? 1 : -1;
+        return a.name.localeCompare(b.name);
+      });
+  }
+  function receivablesTotalForMonth(monthKey) {
+    let total = 0;
+    for (const r of store.receivables) {
+      if (r.month === monthKey) total += r.amount;
+    }
+    return total;
+  }
+  function receivablesPendingForMonth(monthKey) {
+    let total = 0;
+    for (const r of store.receivables) {
+      if (r.month === monthKey && !r.received) total += r.amount;
+    }
+    return total;
   }
 
   // -----------------------------------------------------------
@@ -749,7 +811,8 @@
   // -----------------------------------------------------------
   function netCashFlowForMonth(monthKey) {
     const t = totalsForMonth(monthKey);
-    return t.income - t.outgoing - t.investment - t.savings - t.other;
+    const owed = receivablesTotalForMonth(monthKey);
+    return t.income + owed - t.outgoing - t.investment - t.savings - t.other;
   }
 
   function storedBank(monthKey) {
@@ -817,6 +880,7 @@
     renderCheckup();
     renderKPIs();
     renderCards();
+    renderReceivables();
     renderBreakdown();
     renderTable();
     renderCategories();
@@ -825,11 +889,12 @@
 
   function renderMonthLabels() {
     els.monthInput.value = selectedMonth;
-    const long = formatMonthLong(selectedMonth);
-    els.navMonthLabel.textContent = long;
-    els.heroMonthLabel.textContent = long;
-    if (els.checkupMonthLabel) els.checkupMonthLabel.textContent = long;
-    if (els.cardsMonthLabel) els.cardsMonthLabel.textContent = long;
+    const cycle = formatMonthCycle(selectedMonth);
+    els.navMonthLabel.textContent = cycle;
+    els.heroMonthLabel.textContent = `Pay cycle · ${cycle}`;
+    if (els.checkupMonthLabel) els.checkupMonthLabel.textContent = `Pay cycle · ${cycle}`;
+    if (els.cardsMonthLabel) els.cardsMonthLabel.textContent = cycle;
+    if (els.owedMonthLabel) els.owedMonthLabel.textContent = cycle;
   }
 
   // -----------------------------------------------------------
@@ -1006,39 +1071,52 @@
   function renderKPIs() {
     const t = totalsForMonth(selectedMonth);
     const cards = cardsTotalForMonth(selectedMonth);
-    const leftover = t.income - t.outgoing - t.investment - t.savings - t.other - cards;
+    const owedAll = receivablesTotalForMonth(selectedMonth);
+    const owedPending = receivablesPendingForMonth(selectedMonth);
+    const leftover = t.income + owedAll - t.outgoing - t.investment - t.savings - t.other - cards;
 
     els.kpiIncome.textContent = fmtGBP.format(t.income);
     els.kpiOutgoings.textContent = fmtGBP.format(t.outgoing);
     els.kpiInvestments.textContent = fmtGBP.format(t.investment);
     els.kpiSavings.textContent = fmtGBP.format(t.savings);
     els.kpiCards.textContent = fmtGBP.format(cards);
+    if (els.kpiOwed) els.kpiOwed.textContent = fmtGBP.format(owedPending);
     els.kpiNet.textContent = fmtGBP.format(leftover);
 
     const prevMonth = shiftMonth(selectedMonth, -1);
     const prev = totalsForMonth(prevMonth);
     const prevCards = cardsTotalForMonth(prevMonth);
 
-    els.kpiIncomeHint.textContent = monthOverMonth(t.income, prev.income, "vs last month");
-    els.kpiOutgoingsHint.textContent = monthOverMonth(t.outgoing, prev.outgoing, "vs last month");
-    els.kpiInvestmentsHint.textContent = monthOverMonth(t.investment, prev.investment, "vs last month");
-    els.kpiSavingsHint.textContent = monthOverMonth(t.savings, prev.savings, "vs last month");
+    els.kpiIncomeHint.textContent = monthOverMonth(t.income, prev.income, "vs last cycle");
+    els.kpiOutgoingsHint.textContent = monthOverMonth(t.outgoing, prev.outgoing, "vs last cycle");
+    els.kpiInvestmentsHint.textContent = monthOverMonth(t.investment, prev.investment, "vs last cycle");
+    els.kpiSavingsHint.textContent = monthOverMonth(t.savings, prev.savings, "vs last cycle");
 
     if (store.cards.length === 0) {
       els.kpiCardsHint.textContent = "No cards added";
     } else {
-      els.kpiCardsHint.textContent = monthOverMonth(cards, prevCards, "vs last month");
+      els.kpiCardsHint.textContent = monthOverMonth(cards, prevCards, "vs last cycle");
+    }
+
+    if (els.kpiOwedHint) {
+      const list = receivablesForMonth(selectedMonth);
+      if (list.length === 0) {
+        els.kpiOwedHint.textContent = "Nothing expected this cycle";
+      } else {
+        const received = list.length - list.filter((r) => !r.received).length;
+        els.kpiOwedHint.textContent = `${received}/${list.length} landed · ${fmtGBP.format(owedAll)} total`;
+      }
     }
 
     if (
-      t.income === 0 && cards === 0 &&
+      t.income === 0 && cards === 0 && owedAll === 0 &&
       t.outgoing === 0 && t.investment === 0 && t.savings === 0 && t.other === 0
     ) {
       els.kpiNetHint.textContent = "After outgoings, investments, savings & card balances";
     } else if (leftover >= 0) {
-      els.kpiNetHint.textContent = `${fmtGBP.format(leftover)} left after the month settles`;
+      els.kpiNetHint.textContent = `${fmtGBP.format(leftover)} left after the cycle settles`;
     } else {
-      els.kpiNetHint.textContent = `${fmtGBP.format(Math.abs(leftover))} short this month`;
+      els.kpiNetHint.textContent = `${fmtGBP.format(Math.abs(leftover))} short this cycle`;
     }
   }
 
@@ -1295,6 +1373,89 @@
       })
       .join("");
     els.cardsGrid.innerHTML = html;
+  }
+
+  function renderReceivables() {
+    if (!els.receivablesList) return;
+    const list = receivablesForMonth(selectedMonth);
+    if (list.length === 0) {
+      els.receivablesList.innerHTML = `
+        <li class="rcv rcv--empty">
+          <p>Nothing owed to you yet this cycle. Add the first IOU below.</p>
+        </li>`;
+      return;
+    }
+    const html = list
+      .map((r) => {
+        const status = r.received ? "Landed" : "Still pending";
+        return `
+          <li class="rcv${r.received ? " rcv--done" : ""}" data-rcv-id="${r.id}">
+            <label class="rcv__check">
+              <input type="checkbox" data-rcv-received="${r.id}" ${r.received ? "checked" : ""} aria-label="Mark ${escapeHtml(r.name)} as received" />
+              <span class="rcv__box" aria-hidden="true"></span>
+            </label>
+            <div class="rcv__body">
+              <p class="rcv__name">${escapeHtml(r.name)}</p>
+              <p class="rcv__status">${status}</p>
+            </div>
+            <span class="rcv__amount">${fmtGBPCents.format(r.amount)}</span>
+            <button type="button" class="icon-btn icon-btn--danger rcv__del" data-rcv-del="${r.id}" aria-label="Remove ${escapeHtml(r.name)}">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                  d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>
+              </svg>
+            </button>
+          </li>`;
+      })
+      .join("");
+    els.receivablesList.innerHTML = html;
+  }
+
+  function addReceivableFromForm() {
+    const name = (els.rcvName.value || "").trim();
+    const raw = (els.rcvAmount.value || "").trim();
+    if (!name) return;
+    const amount = parseFloat(raw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast("Please enter a positive amount.");
+      return;
+    }
+    store.receivables.push({
+      id: uid(),
+      month: selectedMonth,
+      name,
+      amount: round2(amount),
+      received: false,
+    });
+    saveStore(store);
+    els.rcvName.value = "";
+    els.rcvAmount.value = "";
+    renderReceivables();
+    renderKPIs();
+    renderCheckup();
+    renderTrendChart();
+    els.rcvName.focus();
+    toast("Added to expected income");
+  }
+
+  function toggleReceivableReceived(id, received) {
+    const r = store.receivables.find((x) => x.id === id);
+    if (!r) return;
+    r.received = !!received;
+    saveStore(store);
+    renderReceivables();
+    renderKPIs();
+  }
+
+  function deleteReceivable(id) {
+    const i = store.receivables.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    store.receivables.splice(i, 1);
+    saveStore(store);
+    renderReceivables();
+    renderKPIs();
+    renderCheckup();
+    renderTrendChart();
   }
 
   function renderTrendChart() {
@@ -1563,6 +1724,26 @@
       e.preventDefault();
       saveCardFromForm();
     });
+
+    // Receivables
+    if (els.receivableForm) {
+      els.receivableForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        addReceivableFromForm();
+      });
+    }
+    if (els.receivablesList) {
+      els.receivablesList.addEventListener("change", (e) => {
+        const cb = e.target.closest("input[data-rcv-received]");
+        if (!cb) return;
+        toggleReceivableReceived(cb.getAttribute("data-rcv-received"), cb.checked);
+      });
+      els.receivablesList.addEventListener("click", (e) => {
+        const del = e.target.closest("button[data-rcv-del]");
+        if (!del) return;
+        deleteReceivable(del.getAttribute("data-rcv-del"));
+      });
+    }
 
     // Bank balance input
     if (els.bankOpeningInput) {
